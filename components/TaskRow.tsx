@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { updateTaskStatus } from "@/lib/actions";
-import { runOrQueue } from "@/lib/offline/client";
+import { newClientId, runOrQueue } from "@/lib/offline/client";
 import type { Task } from "@/lib/types";
 
 const STATUS_OPTIONS: { value: Task["status"]; label: string }[] = [
@@ -21,18 +21,24 @@ export default function TaskRow({
 }) {
   const [pending, startTransition] = useTransition();
   const [queuedLabel, setQueuedLabel] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   const handleStatusClick = (status: Task["status"]) => {
     setQueuedLabel(null);
+    setError(null);
+    const clientId = newClientId();
     startTransition(async () => {
       const result = await runOrQueue("task_status", { taskId: task.id, status }, () =>
-        updateTaskStatus(task.id, status)
+        updateTaskStatus(task.id, status, clientId),
+        clientId
       );
       if (result.status === "queued") {
         // The task's visible status won't update until sync (no local
         // optimistic row state here), but the click itself is never lost —
         // surface that plainly instead of pretending it saved to the server.
         setQueuedLabel(`"${status}" saved offline — will sync`);
+      } else if (result.status === "error") {
+        setError("Couldn't update this task. Please try again.");
       }
     });
   };
@@ -64,6 +70,7 @@ export default function TaskRow({
         ))}
       </div>
       {queuedLabel && <p className="mt-1 text-xs text-amber-400">{queuedLabel}</p>}
+      {error && <p className="mt-1 text-xs text-red-400">{error}</p>}
     </li>
   );
 }
