@@ -127,6 +127,17 @@ export async function linkTaskToGoal(taskId: string, goalId: string | null) {
   } = await supabase.auth.getUser();
   if (!user) throw new Error("Not authenticated");
 
+  if (goalId) {
+    const { data: goal, error: goalError } = await supabase
+      .from("goals")
+      .select("id")
+      .eq("id", goalId)
+      .eq("user_id", user.id)
+      .maybeSingle();
+    if (goalError) throw goalError;
+    if (!goal) throw new Error("Goal not found");
+  }
+
   const { error } = await supabase
     .from("tasks")
     .update({ goal_id: goalId })
@@ -149,7 +160,7 @@ export async function recomputeAndStoreProgress(userId: string) {
   const supabase = await createClient();
   const goals = await fetchGoalsWithProgress(userId);
 
-  await Promise.all(
+  const updates = await Promise.all(
     goals
       .filter((g) => g.computedProgress !== g.progress)
       .map((g) =>
@@ -160,4 +171,6 @@ export async function recomputeAndStoreProgress(userId: string) {
           .eq("user_id", userId)
       )
   );
+  const failedUpdate = updates.find((result) => result.error);
+  if (failedUpdate?.error) throw failedUpdate.error;
 }
