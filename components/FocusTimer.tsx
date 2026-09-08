@@ -47,7 +47,9 @@ export default function FocusTimer({
   const [displaySec, setDisplaySec] = useState(0);
   const [lastFocusedSec, setLastFocusedSec] = useState<number | null>(null);
   const [stopError, setStopError] = useState<string | null>(null);
+  const [isStarting, setIsStarting] = useState(false);
   const tickRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const startingRef = useRef(false);
 
   useEffect(() => {
     if (state !== "running" && state !== "paused") {
@@ -71,6 +73,10 @@ export default function FocusTimer({
   }, [state, startedAt, pauses]);
 
   async function handleStart() {
+    if (startingRef.current) return;
+    startingRef.current = true;
+    setIsStarting(true);
+    setStopError(null);
     // Generated up front so the session has a stable id immediately, whether
     // the create call succeeds now or gets queued for offline replay — a
     // pause taken a second later can reference it either way.
@@ -80,12 +86,28 @@ export default function FocusTimer({
     setPauses([]);
     setDisplaySec(0);
     setState("running");
-    await runOrQueue(
-      "focus_session_start",
-      { taskId, assessmentId },
-      () => startFocusSession(taskId, assessmentId, id),
-      id
-    );
+    try {
+      const result = await runOrQueue(
+        "focus_session_start",
+        { taskId, assessmentId },
+        () => startFocusSession(taskId, assessmentId, id),
+        id
+      );
+      if (result.status === "error") {
+        setSessionId(null);
+        setStartedAt(null);
+        setState("idle");
+        setStopError("Couldn't start the session. Please try again.");
+      }
+    } catch {
+      setSessionId(null);
+      setStartedAt(null);
+      setState("idle");
+      setStopError("Couldn't start the session. Please try again.");
+    } finally {
+      startingRef.current = false;
+      setIsStarting(false);
+    }
   }
 
   function handlePauseClick() {
@@ -162,6 +184,7 @@ export default function FocusTimer({
       {state === "idle" || state === "stopped" ? (
         <button
           onClick={handleStart}
+          disabled={isStarting}
           className="w-full rounded-lg bg-white py-3 font-medium text-neutral-950"
         >
           Start focus session
