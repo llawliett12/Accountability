@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { logMood } from "@/lib/health/actions";
-import { runOrQueue } from "@/lib/offline/client";
+import { newClientId, runOrQueue } from "@/lib/offline/client";
 
 function Scale({
   value,
@@ -41,14 +41,22 @@ export default function MoodQuickLog() {
   const [pending, startTransition] = useTransition();
   const [logged, setLogged] = useState(false);
   const [queuedOffline, setQueuedOffline] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   function submit() {
     if (!mood || !energy) return;
     const notes = note.trim() || undefined;
+    const clientId = newClientId();
+    setError(null);
     startTransition(async () => {
       const result = await runOrQueue("mood_log", { mood, energy, notes }, () =>
-        logMood({ mood, energy, notes })
+        logMood({ mood, energy, notes, clientId }),
+        clientId
       );
+      if (result.status === "error") {
+        setError("Couldn't save this check-in. Please try again.");
+        return;
+      }
       setQueuedOffline(result.status === "queued");
       setLogged(true);
       setTimeout(() => {
@@ -91,6 +99,7 @@ export default function MoodQuickLog() {
       >
         {logged ? (queuedOffline ? "Saved offline ✓" : "Logged ✓") : "Log check-in"}
       </button>
+      {error && <p className="mt-2 text-xs text-red-400">{error}</p>}
     </div>
   );
 }
