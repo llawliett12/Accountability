@@ -25,12 +25,14 @@ export async function getOrCreateDailyPlan(date: string = todayISO()) {
   } = await supabase.auth.getUser();
   if (!user) throw new Error("Not authenticated");
 
-  const { data: existing } = await supabase
+  const { data: existing, error: existingError } = await supabase
     .from("daily_plans")
     .select("id")
     .eq("user_id", user.id)
     .eq("date", date)
     .maybeSingle();
+
+  if (existingError) throw existingError;
 
   if (existing) return existing.id as string;
 
@@ -108,7 +110,7 @@ export async function updateTaskStatus(taskId: string, status: string, clientId?
   // clientId (set when this call is a replay from the offline queue) makes
   // a re-sent retry a no-op instead of a duplicate task_logs row — see
   // migration 0007's (user_id, client_id) unique index.
-  await supabase.from("task_logs").upsert(
+  const { error: logError } = await supabase.from("task_logs").upsert(
     {
       task_id: taskId,
       user_id: user.id,
@@ -118,6 +120,7 @@ export async function updateTaskStatus(taskId: string, status: string, clientId?
     },
     clientId ? { onConflict: "user_id,client_id", ignoreDuplicates: true } : undefined
   );
+  if (logError) throw logError;
 
   // Real task completion is the whole point of task-linked goal progress —
   // recompute so a completed/skipped/etc. task is reflected immediately.
@@ -156,12 +159,13 @@ export async function reconcileTask(
     .single();
   if (error) throw error;
 
-  await supabase.from("task_logs").insert({
+  const { error: logError } = await supabase.from("task_logs").insert({
     task_id: taskId,
     user_id: user.id,
     event_type: "reconciliation_answer",
     value: answer,
   });
+  if (logError) throw logError;
 
   if (updated?.goal_id) await recomputeAndStoreProgress(user.id);
 
@@ -237,6 +241,19 @@ export async function startFocusSession(
 
 export async function startPause(sessionId: string, reason: string, clientId?: string) {
   const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) throw new Error("Not authenticated");
+
+  const { error: sessionError } = await supabase
+    .from("focus_sessions")
+    .select("id")
+    .eq("id", sessionId)
+    .eq("user_id", user.id)
+    .single();
+  if (sessionError) throw sessionError;
+
   const id = clientId ?? crypto.randomUUID();
 
   const { error } = await supabase.from("focus_pauses").upsert(
@@ -255,11 +272,19 @@ export async function startPause(sessionId: string, reason: string, clientId?: s
 
 export async function endPause(pauseId: string) {
   const supabase = await createClient();
-  const { error } = await supabase
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) throw new Error("Not authenticated");
+
+  const { data, error } = await supabase
     .from("focus_pauses")
     .update({ ended_at: new Date().toISOString() })
-    .eq("id", pauseId);
+    .eq("id", pauseId)
+    .select("id")
+    .single();
   if (error) throw error;
+  if (!data) throw new Error("Pause not found");
   revalidatePath("/now");
 }
 
@@ -403,7 +428,7 @@ export async function computeAndStoreDailyScore(date: string = todayISO()) {
   const result = computeDisciplineScore(metrics, config.weights, config.verdictBands);
   const explanation = explainScore(result.components, result.verdictLabel);
 
-  await supabase.from("discipline_scores").upsert(
+  const { error: scoreError } = await supabase.from("discipline_scores").upsert(
     {
       user_id: user.id,
       date,
@@ -413,8 +438,9 @@ export async function computeAndStoreDailyScore(date: string = todayISO()) {
     },
     { onConflict: "user_id,date" }
   );
+  if (scoreError) throw scoreError;
 
-  await supabase.from("discipline_verdicts").upsert(
+  const { error: verdictError } = await supabase.from("discipline_verdicts").upsert(
     {
       user_id: user.id,
       date,
@@ -423,6 +449,7 @@ export async function computeAndStoreDailyScore(date: string = todayISO()) {
     },
     { onConflict: "user_id,date" }
   );
+  if (verdictError) throw verdictError;
 
   await bumpStreak(supabase, user.id, "daily_review", date);
 
