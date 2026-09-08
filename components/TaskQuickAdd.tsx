@@ -9,7 +9,12 @@ export interface LinkableGoal {
   level: string;
 }
 
-export default function TaskQuickAdd({ goals = [] }: { goals?: LinkableGoal[] }) {
+export interface TaskQuickAddProps {
+  goals?: LinkableGoal[];
+  onOptimisticCreate?: (input: { title: string; is_top3: boolean; goal_id?: string }) => Promise<void>;
+}
+
+export default function TaskQuickAdd({ goals = [], onOptimisticCreate }: TaskQuickAddProps) {
   const [title, setTitle] = useState("");
   const [isTop3, setIsTop3] = useState(false);
   const [showGoalPicker, setShowGoalPicker] = useState(false);
@@ -18,21 +23,43 @@ export default function TaskQuickAdd({ goals = [] }: { goals?: LinkableGoal[] })
   const [pending, startTransition] = useTransition();
 
   function submit() {
-    if (!title.trim()) return;
+    const trimmed = title.trim();
+    if (!trimmed) return;
     setError(null);
+    const savedTitle = trimmed;
+    const savedTop3 = isTop3;
+    const savedGoalId = goalId;
+
+    // Clear input immediately so user can type next task
+    setTitle("");
+    setIsTop3(false);
+    setGoalId("");
+    setShowGoalPicker(false);
+
     startTransition(async () => {
       try {
-        await createTask({
-          title: title.trim(),
-          is_top3: isTop3,
-          goal_id: goalId || undefined,
-        });
-        setTitle("");
-        setIsTop3(false);
-        setGoalId("");
-        setShowGoalPicker(false);
+        if (onOptimisticCreate) {
+          await onOptimisticCreate({
+            title: savedTitle,
+            is_top3: savedTop3,
+            goal_id: savedGoalId || undefined,
+          });
+        } else {
+          await createTask({
+            title: savedTitle,
+            is_top3: savedTop3,
+            goal_id: savedGoalId || undefined,
+          });
+        }
       } catch (err: unknown) {
         console.error("Create task error:", err);
+        // Restore input state so user does not lose what they entered
+        setTitle(savedTitle);
+        setIsTop3(savedTop3);
+        if (savedGoalId) {
+          setGoalId(savedGoalId);
+          setShowGoalPicker(true);
+        }
         setError(
           err instanceof Error
             ? err.message

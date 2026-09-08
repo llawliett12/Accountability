@@ -204,6 +204,7 @@ export async function createAssessment(input: {
     .single();
   if (error) throw error;
   revalidatePath("/academics");
+  revalidatePath("/academics/assessments");
   revalidatePath("/academics/calendar");
   return data.id as string;
 }
@@ -241,6 +242,7 @@ export async function recordAssessmentScore(
     .eq("user_id", user.id);
   if (error) throw error;
   revalidatePath("/academics");
+  revalidatePath("/academics/assessments");
   revalidatePath(`/academics/assessments/${assessmentId}`);
 }
 

@@ -15,17 +15,22 @@ import { recomputeAndStoreProgress } from "@/lib/goals/actions";
 import { todayISO } from "@/lib/date";
 
 // Ensures a daily_plans row exists for today (or a given date) and returns its id.
-export async function getOrCreateDailyPlan(date: string = todayISO()) {
+// Optional userId parameter avoids redundant getUser() network roundtrips when caller already authenticated.
+export async function getOrCreateDailyPlan(date: string = todayISO(), userId?: string) {
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) throw new Error("Not authenticated");
+  let resolvedUserId = userId;
+  if (!resolvedUserId) {
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (!user) throw new Error("Not authenticated");
+    resolvedUserId = user.id;
+  }
 
   const { data: existing, error: existingError } = await supabase
     .from("daily_plans")
     .select("id")
-    .eq("user_id", user.id)
+    .eq("user_id", resolvedUserId)
     .eq("date", date)
     .maybeSingle();
 
@@ -35,7 +40,7 @@ export async function getOrCreateDailyPlan(date: string = todayISO()) {
 
   const { data: created, error } = await supabase
     .from("daily_plans")
-    .insert({ user_id: user.id, date })
+    .insert({ user_id: resolvedUserId, date })
     .select("id")
     .single();
 
@@ -63,28 +68,46 @@ export async function createTask(input: {
 
   const dailyPlanId = await getOrCreateDailyPlan();
 
-  const { error } = await supabase.from("tasks").insert({
-    user_id: user.id,
-    daily_plan_id: dailyPlanId,
-    title: input.title,
-    category: input.category ?? null,
-    priority: input.priority ?? 3,
-    planned_duration_min: input.planned_duration_min ?? null,
-    planned_start: input.planned_start ?? null,
-    planned_end: input.planned_end ?? null,
-    deadline: input.deadline ?? null,
-    notes: input.notes ?? null,
-    is_top3: input.is_top3 ?? false,
-    goal_id: input.goal_id ?? null,
-  });
+  const { data: created, error } = await supabase
+    .from("tasks")
+    .insert({
+      user_id: user.id,
+      daily_plan_id: dailyPlanId,
+      title: input.title,
+      category: input.category ?? null,
+      priority: input.priority ?? 3,
+      planned_duration_min: input.planned_duration_min ?? null,
+      planned_start: input.planned_start ?? null,
+      planned_end: input.planned_end ?? null,
+      deadline: input.deadline ?? null,
+      notes: input.notes ?? null,
+      is_top3: input.is_top3 ?? false,
+      goal_id: input.goal_id ?? null,
+    })
+    .select("*")
+    .single();
 
   if (error) throw error;
-  await bumpStreak(supabase, user.id, "planning", todayISO());
+
+  try {
+    await bumpStreak(supabase, user.id, "planning", todayISO());
+  } catch (streakErr) {
+    console.warn("Non-fatal: bumpStreak failed:", streakErr);
+  }
+
   // A newly linked task changes its goal's task-derived progress (denominator
   // grows even before completion), so the goal tree needs a fresh number.
-  if (input.goal_id) await recomputeAndStoreProgress(user.id);
+  if (input.goal_id) {
+    try {
+      await recomputeAndStoreProgress(user.id);
+    } catch (progressErr) {
+      console.warn("Non-fatal: recomputeAndStoreProgress failed:", progressErr);
+    }
+  }
+
   revalidatePath("/plan");
   revalidatePath("/");
+  return created;
 }
 
 export async function updateTaskStatus(taskId: string, status: string, clientId?: string) {
@@ -104,27 +127,53 @@ export async function updateTaskStatus(taskId: string, status: string, clientId?
 
   if (error) throw error;
 
-  // clientId (set when this call is a replay from the offline queue) makes
-  // a re-sent retry a no-op instead of a duplicate task_logs row — see
-  // migration 0007's (user_id, client_id) unique index.
-  const { error: logError } = await supabase.from("task_logs").upsert(
-    {
-      task_id: taskId,
-      user_id: user.id,
-      event_type: "status_change",
-      value: status,
-      client_id: clientId ?? null,
-    },
-    clientId ? { onConflict: "user_id,client_id", ignoreDuplicates: true } : undefined
-  );
-  if (logError) throw logError;
+  // Secondary telemetry/logging: clientId (set when this call is a replay
+  // from the offline queue) makes a re-sent retry a safe no-op.
+  // Must NOT fail the primary task update if secondary logging fails.
+  try {
+    if (clientId) {
+      const { error: logError } = await supabase.from("task_logs").upsert(
+        {
+          task_id: taskId,
+          user_id: user.id,
+          event_type: "status_change",
+          value: status,
+          client_id: clientId,
+        },
+        { onConflict: "user_id,client_id", ignoreDuplicates: true }
+      );
+      if (logError) {
+        console.warn("Non-fatal: task_logs upsert warning:", logError.message);
+      }
+    } else {
+      const { error: logError } = await supabase.from("task_logs").insert({
+        task_id: taskId,
+        user_id: user.id,
+        event_type: "status_change",
+        value: status,
+      });
+      if (logError) {
+        console.warn("Non-fatal: task_logs insert warning:", logError.message);
+      }
+    }
+  } catch (logErr) {
+    console.warn("Non-fatal: task_logs write exception:", logErr);
+  }
 
   // Real task completion is the whole point of task-linked goal progress —
   // recompute so a completed/skipped/etc. task is reflected immediately.
-  if (updated?.goal_id) await recomputeAndStoreProgress(user.id);
+  // Must NOT fail the primary task update if goal recalculation encounters an issue.
+  if (updated?.goal_id) {
+    try {
+      await recomputeAndStoreProgress(user.id);
+    } catch (goalErr) {
+      console.warn("Non-fatal: recomputeAndStoreProgress failed:", goalErr);
+    }
+  }
 
   revalidatePath("/plan");
   revalidatePath("/");
+  return { success: true, taskId, status };
 }
 
 // Reconciliation: never silently assumes failure. Explicitly records the

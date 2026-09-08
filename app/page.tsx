@@ -1,6 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
 import Link from "next/link";
-import { fetchGoalsWithProgress } from "@/lib/goals/queries";
 import { todayISO } from "@/lib/date";
 
 export default async function MorningDashboard() {
@@ -10,47 +9,54 @@ export default async function MorningDashboard() {
   } = await supabase.auth.getUser();
 
   const date = todayISO();
+  const userId = user?.id ?? "";
 
-  // Parallelize independent data fetching
-  const [planRes, verdictRes, streaksRes, goals] = await Promise.all([
+  // Single-roundtrip parallelized fetching for Home page:
+  // 1. Collapsed daily_plans + tasks join query (eliminates sequential waterfall)
+  // 2. Targeted goals query for active goals & progress (replaces full tree calculation)
+  // 3. Latest discipline verdict
+  // 4. Streaks
+  const [planRes, verdictRes, streaksRes, goalsRes] = await Promise.all([
     supabase
       .from("daily_plans")
-      .select("id")
-      .eq("user_id", user?.id ?? "")
+      .select("id, tasks(id, title, status, is_top3, priority)")
+      .eq("user_id", userId)
       .eq("date", date)
       .maybeSingle(),
     supabase
       .from("discipline_verdicts")
       .select("label, explanation")
-      .eq("user_id", user?.id ?? "")
+      .eq("user_id", userId)
       .order("date", { ascending: false })
       .limit(1)
       .maybeSingle(),
     supabase
       .from("streaks")
       .select("streak_type, current_count")
-      .eq("user_id", user?.id ?? ""),
-    user ? fetchGoalsWithProgress(user.id) : Promise.resolve([]),
+      .eq("user_id", userId),
+    supabase
+      .from("goals")
+      .select("id, title, due_date, status, progress")
+      .eq("user_id", userId)
+      .not("status", "in", "(completed,abandoned)"),
   ]);
 
-  const plan = planRes.data;
   const verdict = verdictRes.data;
   const streaks = streaksRes.data;
 
-  const { data: tasks } = plan
-    ? await supabase
-        .from("tasks")
-        .select("id, title, status, is_top3")
-        .eq("daily_plan_id", plan.id)
-        .order("priority", { ascending: true })
-    : { data: [] };
+  // Extract tasks from joined query and sort by priority in memory
+  const rawTasks =
+    (planRes.data?.tasks as
+      | { id: string; title: string; status: string; is_top3: boolean; priority: number }[]
+      | undefined) ?? [];
+  const tasks = [...rawTasks].sort((a, b) => (a.priority ?? 3) - (b.priority ?? 3));
+  const top3 = tasks.filter((t) => t.is_top3);
 
-  const top3 = (tasks ?? []).filter((t) => t.is_top3);
-
-  const activeGoals = goals.filter((g) => g.status !== "completed" && g.status !== "abandoned");
-  const overdueGoals = activeGoals.filter((g) => g.overdue);
+  // Compute goals summary directly from targeted query
+  const activeGoals = goalsRes.data ?? [];
+  const overdueGoals = activeGoals.filter((g) => g.due_date && g.due_date < date);
   const nearestGoal = activeGoals
-    .filter((g) => !g.overdue)
+    .filter((g) => !g.due_date || g.due_date >= date)
     .sort((a, b) => (a.due_date ?? "9999-99-99").localeCompare(b.due_date ?? "9999-99-99"))[0];
 
   return (
@@ -192,7 +198,7 @@ export default async function MorningDashboard() {
                 <span className="min-w-0 truncate text-neutral-400 pr-2">
                   Next up: {nearestGoal.title}
                 </span>
-                <span className="shrink-0 font-medium">{nearestGoal.computedProgress}%</span>
+                <span className="shrink-0 font-medium">{nearestGoal.progress}%</span>
               </div>
             )}
           </div>

@@ -138,6 +138,7 @@ export interface AcademicDashboardData {
   nextOccurrence: (ClassOccurrence & { className: string }) | null;
   todayOccurrences: (ClassOccurrence & { className: string })[];
   upcomingAssessments: Assessment[];
+  recentScoredAssessments: (Assessment & { className?: string | null })[];
   overdueDeadlines: Deadline[];
   upcomingDeadlines: Deadline[];
   prepReview: ReturnType<typeof summarizePrepReview>;
@@ -176,6 +177,14 @@ export async function fetchAcademicDashboard(userId: string): Promise<AcademicDa
   const upcomingAssessments = assessments
     .filter((a) => !isAssessmentPast(a.date, a.status, today))
     .slice(0, 10);
+  const recentScoredAssessments = assessments
+    .filter((a) => a.score !== null && a.max_score !== null && a.max_score > 0)
+    .sort((a, b) => b.date.localeCompare(a.date))
+    .slice(0, 5)
+    .map((a) => ({
+      ...a,
+      className: a.class_id ? classNameById.get(a.class_id) ?? null : null,
+    }));
   const averageScorePct = averageAssessmentPercentage(assessments);
 
   const deadlines = await fetchDeadlines(userId);
@@ -198,6 +207,7 @@ export async function fetchAcademicDashboard(userId: string): Promise<AcademicDa
     nextOccurrence,
     todayOccurrences,
     upcomingAssessments,
+    recentScoredAssessments,
     overdueDeadlines,
     upcomingDeadlines,
     prepReview,

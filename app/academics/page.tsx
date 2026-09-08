@@ -132,15 +132,57 @@ export default async function AcademicsPage() {
             View all
           </Link>
         </div>
-        <p className="text-sm">
-          {data.averageScorePct !== null ? (
-            <>
-              Average score: <span className="font-semibold">{data.averageScorePct}%</span>
-            </>
-          ) : (
-            <span className="text-neutral-500">No scored quizzes/exams yet.</span>
-          )}
-        </p>
+        {data.recentScoredAssessments && data.recentScoredAssessments.length > 0 ? (
+          <div className="space-y-3">
+            {data.averageScorePct !== null && (
+              <p className="text-xs text-neutral-400">
+                Average score: <span className="font-semibold text-white">{data.averageScorePct}%</span>
+              </p>
+            )}
+            <ul className="space-y-2">
+              {data.recentScoredAssessments.map((a) => {
+                const pct =
+                  a.score !== null && a.max_score && a.max_score > 0
+                    ? Math.round((a.score / a.max_score) * 100)
+                    : null;
+                return (
+                  <li key={a.id} className="flex items-center justify-between gap-2 rounded-xl bg-neutral-800/60 p-2.5 text-sm">
+                    <div className="min-w-0 flex-1">
+                      <Link
+                        href={`/academics/assessments/${a.id}`}
+                        className="font-medium hover:underline truncate block"
+                      >
+                        <span className="capitalize text-neutral-400 font-normal mr-1.5">{a.type}:</span>
+                        {a.title}
+                      </Link>
+                      <div className="flex items-center gap-2 mt-0.5 text-xs text-neutral-400">
+                        {a.className && <span className="truncate">{a.className}</span>}
+                        {a.className && <span>·</span>}
+                        <span>{a.date}</span>
+                      </div>
+                    </div>
+                    <div className="text-right shrink-0">
+                      <span className="inline-block rounded-lg bg-neutral-700/80 px-2 py-0.5 font-mono text-xs font-semibold text-neutral-100">
+                        {a.score}/{a.max_score}
+                        {pct !== null && ` (${pct}%)`}
+                      </span>
+                    </div>
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
+        ) : (
+          <div className="space-y-1 text-sm text-neutral-400">
+            <p>No scored quizzes or exams yet — log scores in Assessments to see your recent performance.</p>
+            <Link
+              href="/academics/assessments"
+              className="inline-block text-xs text-amber-400 underline hover:text-amber-300 mt-1"
+            >
+              Go to Assessments →
+            </Link>
+          </div>
+        )}
       </section>
 
       {data.overdueDeadlines.length > 0 && (
