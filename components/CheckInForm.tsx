@@ -2,20 +2,28 @@
 
 import { useState, useTransition } from "react";
 import { createCheckIn } from "@/lib/actions";
-import { runOrQueue } from "@/lib/offline/client";
+import { newClientId, runOrQueue } from "@/lib/offline/client";
 
 export default function CheckInForm() {
   const [activity, setActivity] = useState("");
   const [pending, startTransition] = useTransition();
   const [lastLogged, setLastLogged] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   function log(drift: "on_track" | "drifting") {
     if (!activity.trim()) return;
     const actual_activity = activity.trim();
+    const clientId = newClientId();
+    setError(null);
     startTransition(async () => {
       const result = await runOrQueue("check_in", { actual_activity, drift_state: drift }, () =>
-        createCheckIn({ actual_activity, drift_state: drift })
+        createCheckIn({ actual_activity, drift_state: drift, clientId }),
+        clientId
       );
+      if (result.status === "error") {
+        setError("Couldn't save this check-in. Please try again.");
+        return;
+      }
       const suffix = result.status === "queued" ? " (saved offline — will sync)" : "";
       setLastLogged(
         `${actual_activity} — ${drift === "on_track" ? "on track" : "drifting"}${suffix}`
@@ -54,6 +62,7 @@ export default function CheckInForm() {
       {lastLogged && (
         <p className="mt-2 text-xs text-neutral-500">Logged: {lastLogged}</p>
       )}
+      {error && <p className="mt-2 text-xs text-red-400">{error}</p>}
     </div>
   );
 }
