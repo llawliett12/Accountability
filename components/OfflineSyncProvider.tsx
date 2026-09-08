@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { listQueuedActions, removeQueuedAction, updateQueuedAction, QueuedAction } from "@/lib/offline/db";
 import { updateTaskStatus, createCheckIn, startFocusSession, startPause, endPause } from "@/lib/actions";
 import { logMood } from "@/lib/health/actions";
@@ -69,12 +69,38 @@ async function replay(action: QueuedAction): Promise<void> {
   }
 }
 
+function subscribeToNavigator(callback: () => void) {
+  window.addEventListener("online", callback);
+  window.addEventListener("offline", callback);
+  return () => {
+    window.removeEventListener("online", callback);
+    window.removeEventListener("offline", callback);
+  };
+}
+
+function getNavigatorSnapshot(): boolean {
+  return typeof navigator !== "undefined" ? navigator.onLine : true;
+}
+
+function getServerSnapshot(): boolean {
+  return true;
+}
+
 export default function OfflineSyncProvider({ children }: { children: React.ReactNode }) {
-  const [isOnline, setIsOnline] = useState(() =>
-    typeof navigator === "undefined" ? true : navigator.onLine
+  const browserOnline = useSyncExternalStore(
+    subscribeToNavigator,
+    getNavigatorSnapshot,
+    getServerSnapshot
   );
+  const [explicitOnline, setExplicitOnline] = useState<boolean | null>(null);
   const [pendingCount, setPendingCount] = useState(0);
   const syncingRef = useRef(false);
+
+  // If explicit server connectivity succeeded, honor it; if browser explicitly fired offline, mark offline
+  const isOnline =
+    explicitOnline !== null
+      ? (browserOnline ? explicitOnline : false)
+      : browserOnline;
 
   const refreshPendingCount = useCallback(async () => {
     const queued = await listQueuedActions().catch(() => []);
@@ -82,23 +108,19 @@ export default function OfflineSyncProvider({ children }: { children: React.Reac
   }, []);
 
   const flush = useCallback(async () => {
-    if (syncingRef.current) return; // avoid overlapping flushes (e.g. rapid online/offline flapping)
+    if (syncingRef.current) return;
     syncingRef.current = true;
     try {
       const queued = await listQueuedActions();
+      let hadSuccess = false;
       for (const action of queued) {
         try {
           await replay(action);
           await removeQueuedAction(action.id);
+          hadSuccess = true;
         } catch (err) {
           const attempts = action.attempts + 1;
           if (attempts >= MAX_ATTEMPTS) {
-            // Give up automatically retrying, but keep the entry (and its
-            // data) rather than silently deleting a user's action — a
-            // future manual "retry" affordance or dev inspection can still
-            // recover it. Stop processing further queued items this pass
-            // if we're offline again, since later items likely share the
-            // same cause.
             await updateQueuedAction({
               ...action,
               attempts,
@@ -110,9 +132,12 @@ export default function OfflineSyncProvider({ children }: { children: React.Reac
               attempts,
               lastError: err instanceof Error ? err.message : String(err),
             });
-            break; // stop here; ordering must be preserved, don't skip ahead
+            break; // Stop processing further queued items this pass to preserve ordering
           }
         }
+      }
+      if (hadSuccess) {
+        setExplicitOnline(true);
       }
     } finally {
       syncingRef.current = false;
@@ -121,39 +146,66 @@ export default function OfflineSyncProvider({ children }: { children: React.Reac
   }, [refreshPendingCount]);
 
   useEffect(() => {
-    // queueMicrotask breaks the "setState called synchronously in effect
-    // body" pattern the lint rule flags — refreshPendingCount's own setState
-    // still only runs after its internal await, this just defers the initial
-    // call itself by one tick.
     queueMicrotask(() => {
       refreshPendingCount();
     });
 
     const handleOnline = () => {
-      setIsOnline(true);
+      setExplicitOnline(true);
       flush();
     };
-    const handleOffline = () => setIsOnline(false);
+
+    const handleOffline = () => {
+      setExplicitOnline(false);
+    };
+
+    const handleConnectivity = (e: Event) => {
+      const custom = e as CustomEvent<{ online: boolean }>;
+      if (custom.detail?.online) {
+        setExplicitOnline(true);
+        flush();
+      } else {
+        setExplicitOnline(false);
+      }
+    };
+
+    // App resume from background on mobile: check connectivity and flush
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        if (typeof navigator !== "undefined" && navigator.onLine) {
+          setExplicitOnline(true);
+          flush();
+        }
+        refreshPendingCount();
+      }
+    };
 
     window.addEventListener("online", handleOnline);
     window.addEventListener("offline", handleOffline);
+    window.addEventListener("app:connectivity", handleConnectivity);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    window.addEventListener("focus", handleVisibilityChange);
 
-    // Also poll periodically in case a queued item was added by another tab,
-    // or a prior sync attempt failed silently for a reason that has since
-    // resolved (e.g. auth token refreshed).
     const interval = setInterval(() => {
-      if (navigator.onLine) flush();
+      if (typeof navigator !== "undefined" && navigator.onLine) {
+        setExplicitOnline(true);
+        flush();
+      }
     }, 30_000);
 
-    if (navigator.onLine) queueMicrotask(() => flush());
+    if (typeof navigator !== "undefined" && navigator.onLine) {
+      queueMicrotask(() => flush());
+    }
 
     return () => {
       window.removeEventListener("online", handleOnline);
       window.removeEventListener("offline", handleOffline);
+      window.removeEventListener("app:connectivity", handleConnectivity);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      window.removeEventListener("focus", handleVisibilityChange);
       clearInterval(interval);
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [flush, refreshPendingCount]);
 
   return (
     <OfflineStatusContext.Provider value={{ isOnline, pendingCount }}>

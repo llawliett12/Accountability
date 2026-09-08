@@ -29,10 +29,14 @@ export default async function DailyReportPage({
     .gte("started_at", `${date}T00:00:00`)
     .lte("started_at", `${date}T23:59:59`);
 
-  const { data: pauses } = await supabase
-    .from("focus_pauses")
-    .select("reason, started_at, ended_at, focus_session_id")
-    .in("focus_session_id", (sessions ?? []).map((s) => s.id).filter(Boolean));
+  const sessionIds = (sessions ?? []).map((s) => s.id).filter(Boolean);
+  const { data: pauses } =
+    sessionIds.length > 0
+      ? await supabase
+          .from("focus_pauses")
+          .select("reason, started_at, ended_at, focus_session_id")
+          .in("focus_session_id", sessionIds)
+      : { data: [] };
 
   const totalFocusMin =
     (sessions ?? []).reduce((s, f) => s + (f.focused_duration_sec ?? 0), 0) / 60;

@@ -2,10 +2,7 @@
 
 import { createClient } from "@/lib/supabase/server";
 import { revalidatePath } from "next/cache";
-
-function todayISO(): string {
-  return new Date().toISOString().slice(0, 10);
-}
+import { todayISO } from "@/lib/date";
 
 // Duration is computed by the database (generated column), so callers never
 // have to calculate it — matches the "do not make the user do the math" spec.

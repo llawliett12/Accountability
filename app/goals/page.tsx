@@ -1,12 +1,9 @@
 import { createClient } from "@/lib/supabase/server";
 import Link from "next/link";
 import { fetchGoalsWithProgress, goalsAtLevel } from "@/lib/goals/queries";
+import { todayISO } from "@/lib/date";
 import GoalCard from "@/components/GoalCard";
 import GoalQuickAdd from "@/components/GoalQuickAdd";
-
-function todayISO() {
-  return new Date().toISOString().slice(0, 10);
-}
 
 function isActive(status: string) {
   return status !== "completed" && status !== "abandoned";
@@ -122,10 +119,12 @@ export default async function GoalsPage() {
       )}
 
       {goals.length === 0 && (
-        <p className="text-sm text-neutral-500">
-          No goals yet — add a Year goal above to start the hierarchy, then
-          break it down into quarters, months, weeks, and days.
-        </p>
+        <div className="rounded-xl border border-neutral-800 bg-neutral-900/40 p-5 text-center">
+          <p className="text-sm font-medium text-neutral-300">No goals set yet</p>
+          <p className="mt-1 text-xs text-neutral-500">
+            Use the form above to add a Year or Quarter goal to start your hierarchy, then break it down into milestones.
+          </p>
+        </div>
       )}
 
       <Link href="/plan" className="block text-center text-xs text-neutral-500 underline">

@@ -3,6 +3,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { revalidatePath } from "next/cache";
 import { occurrenceDatesInRange } from "./engine";
+import { todayISO } from "@/lib/date";
 import type { AttendanceStatus, AssessmentType, AssessmentStatus, DeadlineStatus } from "./types";
 
 async function requireUser() {
@@ -12,10 +13,6 @@ async function requireUser() {
   } = await supabase.auth.getUser();
   if (!user) throw new Error("Not authenticated");
   return { supabase, user };
-}
-
-function todayISO(): string {
-  return new Date().toISOString().slice(0, 10);
 }
 
 function addDays(dateISO: string, days: number): string {

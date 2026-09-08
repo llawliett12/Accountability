@@ -40,9 +40,9 @@ export default async function ClassesPage() {
                 href={`/academics/classes/${c.id}`}
                 className="block rounded-xl bg-neutral-900 p-3"
               >
-                <div className="flex items-center justify-between">
-                  <p className="font-medium">{c.name}</p>
-                  <span className="text-xs text-neutral-500">
+                <div className="flex items-center justify-between gap-2">
+                  <p className="font-medium truncate min-w-0">{c.name}</p>
+                  <span className="shrink-0 text-xs text-neutral-500">
                     {DAY_LABELS[c.day_of_week]} {c.start_time.slice(0, 5)}
                   </span>
                 </div>

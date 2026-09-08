@@ -12,14 +12,33 @@ export function newClientId(): string {
  * thrown by the action itself, which should surface normally, not be queued
  * silently as if it "succeeded"). */
 function looksLikeNetworkFailure(err: unknown): boolean {
-  if (typeof navigator !== "undefined" && navigator.onLine === false) return true;
+  if (err instanceof Error) {
+    const message = err.message.toLowerCase();
+    // Explicit application/auth/validation errors must never be treated as network failures
+    if (
+      message.includes("not authenticated") ||
+      message.includes("unauthorized") ||
+      message.includes("not found") ||
+      message.includes("constraint") ||
+      message.includes("invalid") ||
+      message.includes("violates")
+    ) {
+      return false;
+    }
+    if (
+      message.includes("failed to fetch") ||
+      message.includes("network") ||
+      message.includes("load failed") ||
+      message.includes("fetch failed") ||
+      message.includes("econnrefused") ||
+      message.includes("timeout") ||
+      message.includes("aborted")
+    ) {
+      return true;
+    }
+  }
   if (err instanceof TypeError) return true; // fetch()'s failure mode for "no network"
-  const message = err instanceof Error ? err.message.toLowerCase() : "";
-  return (
-    message.includes("failed to fetch") ||
-    message.includes("network") ||
-    message.includes("load failed")
-  );
+  return false;
 }
 
 export type RunOrQueueResult<T> =
@@ -43,10 +62,16 @@ export async function runOrQueue<T>(
 ): Promise<RunOrQueueResult<T>> {
   try {
     const value = await run();
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(new CustomEvent("app:connectivity", { detail: { online: true } }));
+    }
     return { status: "ran", value };
   } catch (err) {
     if (!looksLikeNetworkFailure(err)) {
       return { status: "error", error: err };
+    }
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(new CustomEvent("app:connectivity", { detail: { online: false } }));
     }
     await enqueueAction({
       id: clientId,

@@ -2,11 +2,8 @@ import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { fetchAssessments, fetchClasses } from "@/lib/academics/queries";
 import { isAssessmentPast } from "@/lib/academics/engine";
+import { todayISO } from "@/lib/date";
 import AssessmentQuickAdd from "@/components/AssessmentQuickAdd";
-
-function todayISO(): string {
-  return new Date().toISOString().slice(0, 10);
-}
 
 export default async function AssessmentsPage() {
   const supabase = await createClient();

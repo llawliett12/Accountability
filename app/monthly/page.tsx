@@ -1,10 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { fetchDailyMetrics, addDays } from "@/lib/analytics/queries";
 import { sum, average, compare, strongestDay, weakestDay, consistencyScore } from "@/lib/analytics/engine";
-
-function todayISO() {
-  return new Date().toISOString().slice(0, 10);
-}
+import { todayISO } from "@/lib/date";
 
 export default async function MonthlyPage() {
   const supabase = await createClient();

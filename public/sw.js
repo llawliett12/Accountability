@@ -20,7 +20,6 @@ const STATIC_CACHE = `accountability-static-${CACHE_VERSION}`;
 const OFFLINE_URL = "/offline";
 
 const PRECACHE_URLS = [
-  "/",
   OFFLINE_URL,
   "/manifest.json",
   "/icon-192.png",

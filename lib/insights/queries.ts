@@ -1,5 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
-import { fetchDailyMetrics } from "@/lib/analytics/queries";
+import { fetchDailyMetrics, type DailyMetricsRow } from "@/lib/analytics/queries";
 import { fetchScreenTimeMinutesByDate } from "@/lib/screen-time/queries";
 import { extractPairs, buildPattern, buildGroupComparison, type Pattern, type GroupComparison } from "./engine";
 
@@ -7,6 +7,8 @@ export interface InsightsData {
   patterns: Pattern[];
   morningEveningComparison: GroupComparison;
   daysAnalyzed: number;
+  dailyRows: DailyMetricsRow[];
+  screenTimeByDate: Map<string, number>;
 }
 
 export async function fetchInsights(
@@ -130,7 +132,13 @@ export async function fetchInsights(
   );
   const morningEveningComparison = buildGroupComparison("Morning", "Evening", morning, evening);
 
-  return { patterns, morningEveningComparison, daysAnalyzed: rows.length };
+  return {
+    patterns,
+    morningEveningComparison,
+    daysAnalyzed: rows.length,
+    dailyRows,
+    screenTimeByDate,
+  };
 }
 
 async function fetchSessionPauseVsDuration(

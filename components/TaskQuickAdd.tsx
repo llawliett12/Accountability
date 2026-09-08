@@ -14,25 +14,41 @@ export default function TaskQuickAdd({ goals = [] }: { goals?: LinkableGoal[] })
   const [isTop3, setIsTop3] = useState(false);
   const [showGoalPicker, setShowGoalPicker] = useState(false);
   const [goalId, setGoalId] = useState("");
+  const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
 
   function submit() {
     if (!title.trim()) return;
+    setError(null);
     startTransition(async () => {
-      await createTask({
-        title: title.trim(),
-        is_top3: isTop3,
-        goal_id: goalId || undefined,
-      });
-      setTitle("");
-      setIsTop3(false);
-      setGoalId("");
-      setShowGoalPicker(false);
+      try {
+        await createTask({
+          title: title.trim(),
+          is_top3: isTop3,
+          goal_id: goalId || undefined,
+        });
+        setTitle("");
+        setIsTop3(false);
+        setGoalId("");
+        setShowGoalPicker(false);
+      } catch (err: unknown) {
+        console.error("Create task error:", err);
+        setError(
+          err instanceof Error
+            ? err.message
+            : "Failed to add task. Please try again."
+        );
+      }
     });
   }
 
   return (
     <div className="space-y-2 rounded-2xl bg-neutral-900 p-3">
+      {error && (
+        <p className="rounded-lg border border-red-800/50 bg-red-950/70 p-2 text-xs text-red-300">
+          {error}
+        </p>
+      )}
       <div className="flex gap-2">
         <input
           value={title}
@@ -54,10 +70,10 @@ export default function TaskQuickAdd({ goals = [] }: { goals?: LinkableGoal[] })
         <button
           type="button"
           onClick={submit}
-          disabled={pending}
-          className="rounded-lg bg-white px-4 text-sm font-medium text-neutral-950"
+          disabled={pending || !title.trim()}
+          className="rounded-lg bg-white px-4 text-sm font-medium text-neutral-950 disabled:opacity-50"
         >
-          Add
+          {pending ? "Adding..." : "Add"}
         </button>
       </div>
 

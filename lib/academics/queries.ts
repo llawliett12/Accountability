@@ -7,11 +7,8 @@ import {
   averageAssessmentPercentage,
   type AttendanceStats,
 } from "./engine";
+import { todayISO } from "@/lib/date";
 import type { ClassDef, ClassOccurrence, Assessment, Deadline } from "./types";
-
-function todayISO(): string {
-  return new Date().toISOString().slice(0, 10);
-}
 
 export async function fetchClasses(userId: string): Promise<ClassDef[]> {
   const supabase = await createClient();

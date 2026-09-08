@@ -34,9 +34,17 @@ export async function updateSession(request: NextRequest) {
   // are legitimately called with no Supabase session at all (a cron/
   // scheduler request carrying only a Bearer secret) and must reach their
   // own auth check rather than be redirected to an HTML login page first.
-  const isAuthRoute = request.nextUrl.pathname.startsWith("/login");
-  const isApiRoute = request.nextUrl.pathname.startsWith("/api/");
-  if (!user && !isAuthRoute && !isApiRoute) {
+  const pathname = request.nextUrl.pathname;
+  const isAuthRoute = pathname.startsWith("/login");
+  const isApiRoute = pathname.startsWith("/api/");
+  const isPublicRoute =
+    pathname === "/offline" ||
+    pathname === "/sw.js" ||
+    pathname === "/manifest.json" ||
+    pathname.startsWith("/icon-") ||
+    pathname === "/favicon.ico";
+
+  if (!user && !isAuthRoute && !isApiRoute && !isPublicRoute) {
     const url = request.nextUrl.clone();
     url.pathname = "/login";
     return NextResponse.redirect(url);

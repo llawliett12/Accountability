@@ -41,12 +41,15 @@ export default async function AcademicsPage() {
             </p>
           </Link>
         ) : (
-          <p className="text-sm text-neutral-500">
-            No upcoming classes scheduled.{" "}
-            <Link href="/academics/classes" className="underline">
-              Add a class
+          <div>
+            <p className="text-sm text-neutral-400">No upcoming classes scheduled.</p>
+            <Link
+              href="/academics/classes"
+              className="mt-2 inline-flex items-center text-xs font-medium text-white underline underline-offset-4"
+            >
+              + Add a class to schedule →
             </Link>
-          </p>
+          </div>
         )}
       </section>
 
@@ -87,16 +90,24 @@ export default async function AcademicsPage() {
       <section className="rounded-2xl bg-neutral-900 p-4">
         <h2 className="mb-2 text-sm font-medium text-neutral-400">Attendance</h2>
         {data.attendanceZones.length === 0 ? (
-          <p className="text-sm text-neutral-500">No classes yet.</p>
+          <div>
+            <p className="text-sm text-neutral-400">No classes tracked yet.</p>
+            <Link
+              href="/academics/classes"
+              className="mt-2 inline-flex items-center text-xs font-medium text-white underline underline-offset-4"
+            >
+              + Add your first class →
+            </Link>
+          </div>
         ) : (
           <ul className="space-y-2 text-sm">
             {data.attendanceZones.map((c) => (
               <li key={c.id} className="flex items-center justify-between">
-                <Link href={`/academics/classes/${c.id}`} className="underline">
+                <Link href={`/academics/classes/${c.id}`} className="underline truncate min-w-0 mr-2">
                   {c.name}
                 </Link>
                 <span
-                  className={
+                  className={`shrink-0 ${
                     c.attendance.zone === "danger"
                       ? "text-red-400"
                       : c.attendance.zone === "warning"
@@ -104,7 +115,7 @@ export default async function AcademicsPage() {
                       : c.attendance.zone === "safe"
                       ? "text-emerald-400"
                       : "text-neutral-500"
-                  }
+                  }`}
                 >
                   {c.attendance.percentage !== null ? `${c.attendance.percentage}%` : "no data"}
                 </span>
@@ -138,8 +149,8 @@ export default async function AcademicsPage() {
           <ul className="space-y-1 text-sm">
             {data.overdueDeadlines.map((d) => (
               <li key={d.id} className="flex items-center justify-between">
-                <span>{d.title}</span>
-                <span className="text-neutral-500">{d.due_date}</span>
+                <span className="truncate min-w-0 mr-2">{d.title}</span>
+                <span className="shrink-0 text-neutral-500">{d.due_date}</span>
               </li>
             ))}
           </ul>
@@ -154,13 +165,21 @@ export default async function AcademicsPage() {
           </Link>
         </div>
         {data.upcomingDeadlines.length === 0 ? (
-          <p className="text-sm text-neutral-500">Nothing upcoming.</p>
+          <div>
+            <p className="text-sm text-neutral-400">Nothing upcoming.</p>
+            <Link
+              href="/academics/deadlines"
+              className="mt-2 inline-flex items-center text-xs font-medium text-white underline underline-offset-4"
+            >
+              + Add a deadline →
+            </Link>
+          </div>
         ) : (
           <ul className="space-y-1 text-sm">
             {data.upcomingDeadlines.map((d) => (
               <li key={d.id} className="flex items-center justify-between">
-                <span>{d.title}</span>
-                <span className="text-neutral-500">{d.due_date}</span>
+                <span className="truncate min-w-0 mr-2">{d.title}</span>
+                <span className="shrink-0 text-neutral-500">{d.due_date}</span>
               </li>
             ))}
           </ul>

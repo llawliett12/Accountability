@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { revalidatePath } from "next/cache";
 import { analyzeScreenshotWithGemini } from "./gemini";
 import { validateManualEntry } from "./engine";
+import { todayISO } from "@/lib/date";
 import type { AppUsage } from "./types";
 
 async function requireUser() {
@@ -15,10 +16,6 @@ async function requireUser() {
   return { supabase, user };
 }
 
-function todayISO(): string {
-  return new Date().toISOString().slice(0, 10);
-}
-
 export interface AnalyzeResult {
   success: boolean;
   screenshotPath: string | null;
@@ -28,6 +25,9 @@ export interface AnalyzeResult {
   warnings: string[];
   errorMessage: string | null;
 }
+
+const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
+const ALLOWED_MIME_TYPES = ["image/jpeg", "image/png", "image/webp", "image/gif"];
 
 // Uploads the screenshot to private storage, then asks Gemini to extract
 // structured data. Never writes to screen_time_records here — that only
@@ -45,6 +45,30 @@ export async function analyzeScreenshot(formData: FormData): Promise<AnalyzeResu
       apps: [],
       warnings: [],
       errorMessage: "No file was uploaded.",
+    };
+  }
+
+  if (file.size > MAX_FILE_SIZE) {
+    return {
+      success: false,
+      screenshotPath: null,
+      date: null,
+      totalMinutes: 0,
+      apps: [],
+      warnings: [],
+      errorMessage: "File size exceeds 10MB limit. Please upload a smaller screenshot.",
+    };
+  }
+
+  if (!ALLOWED_MIME_TYPES.includes(file.type)) {
+    return {
+      success: false,
+      screenshotPath: null,
+      date: null,
+      totalMinutes: 0,
+      apps: [],
+      warnings: [],
+      errorMessage: "Unsupported file type. Please upload a JPEG, PNG, or WebP image.",
     };
   }
 

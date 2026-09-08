@@ -4,10 +4,7 @@ import ReconciliationList from "@/components/ReconciliationList";
 import RunScoringButton from "@/components/RunScoringButton";
 import SleepLogForm from "@/components/SleepLogForm";
 import MeditationLogForm from "@/components/MeditationLogForm";
-
-function todayISO() {
-  return new Date().toISOString().slice(0, 10);
-}
+import { todayISO } from "@/lib/date";
 
 export default async function NightReviewPage() {
   const date = todayISO();

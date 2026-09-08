@@ -226,20 +226,48 @@ export default function FocusTimer({
       )}
 
       {showReasonPicker && (
-        <div className="fixed inset-0 z-10 flex items-end bg-black/60">
-          <div className="w-full rounded-t-2xl bg-neutral-900 p-4">
-            <p className="mb-3 text-sm text-neutral-400">Why the pause?</p>
+        <div
+          className="fixed inset-0 z-50 flex items-end justify-center bg-black/70 backdrop-blur-sm p-0 sm:p-4"
+          onClick={() => setShowReasonPicker(false)}
+        >
+          <div
+            className="w-full max-w-md rounded-t-3xl sm:rounded-2xl border border-neutral-800 bg-neutral-900 p-5 pb-[env(safe-area-inset-bottom,1.25rem)] shadow-2xl space-y-4"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="text-base font-semibold text-white">Why the pause?</h3>
+                <p className="text-xs text-neutral-400">Select a reason to record this pause</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowReasonPicker(false)}
+                className="flex h-8 w-8 items-center justify-center rounded-full bg-neutral-800 text-sm text-neutral-400 hover:text-white"
+                title="Dismiss"
+              >
+                ✕
+              </button>
+            </div>
+
             <div className="grid grid-cols-3 gap-2">
               {PAUSE_REASONS.map((r) => (
                 <button
                   key={r}
                   onClick={() => handleReasonPick(r)}
-                  className="rounded-lg bg-neutral-800 py-2 text-xs capitalize"
+                  className="min-h-[44px] rounded-xl bg-neutral-800 px-2 py-2 text-xs font-medium capitalize text-neutral-200 transition-colors hover:bg-neutral-700 active:bg-neutral-600"
                 >
                   {r.replace("_", " ")}
                 </button>
               ))}
             </div>
+
+            <button
+              type="button"
+              onClick={() => setShowReasonPicker(false)}
+              className="w-full min-h-[44px] rounded-xl border border-neutral-700 bg-neutral-800/80 py-2.5 text-sm font-medium text-neutral-300 transition-colors hover:bg-neutral-700 active:bg-neutral-600"
+            >
+              Cancel (Resume immediately)
+            </button>
           </div>
         </div>
       )}

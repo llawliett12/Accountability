@@ -1,10 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import Link from "next/link";
 import ScreenTimeCapture from "@/components/screen-time/ScreenTimeCapture";
-
-function todayISO() {
-  return new Date().toISOString().slice(0, 10);
-}
+import { todayISO } from "@/lib/date";
 
 export default async function ScreenTimePage() {
   const supabase = await createClient();

@@ -3,10 +3,7 @@ import { computeAllProgress } from "./engine";
 import type { GoalProgressNode } from "./engine";
 import { isOverdue } from "./engine";
 import type { Goal, GoalLevel } from "./types";
-
-function todayISO(): string {
-  return new Date().toISOString().slice(0, 10);
-}
+import { todayISO } from "@/lib/date";
 
 export interface GoalWithMeta extends Goal {
   computedProgress: number;

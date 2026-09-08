@@ -2,15 +2,11 @@
 
 import { createClient } from "@/lib/supabase/server";
 import { fetchInsights } from "./queries";
-import { fetchDailyMetrics, addDays } from "@/lib/analytics/queries";
-import { fetchScreenTimeMinutesByDate } from "@/lib/screen-time/queries";
+import { addDays } from "@/lib/analytics/queries";
 import { average, sum } from "@/lib/analytics/engine";
 import { generateNarrativeInsights } from "./gemini-insights";
+import { todayISO } from "@/lib/date";
 import type { Pattern, GroupComparison } from "./engine";
-
-function todayISO(): string {
-  return new Date().toISOString().slice(0, 10);
-}
 
 export interface InsightsPageData {
   patterns: Pattern[];
@@ -33,16 +29,13 @@ export async function loadInsights(period: "week" | "month"): Promise<InsightsPa
   const end = todayISO();
   const start = period === "week" ? addDays(end, -6) : addDays(end, -29);
 
-  const { patterns, morningEveningComparison, daysAnalyzed } = await fetchInsights(
-    user.id,
-    start,
-    end
-  );
-
-  const [dailyRows, screenTimeByDate] = await Promise.all([
-    fetchDailyMetrics(user.id, start, end),
-    fetchScreenTimeMinutesByDate(user.id, start, end),
-  ]);
+  const {
+    patterns,
+    morningEveningComparison,
+    daysAnalyzed,
+    dailyRows,
+    screenTimeByDate,
+  } = await fetchInsights(user.id, start, end);
 
   const focusHours = sum(dailyRows.map((r) => r.focusMinutes)) / 60;
   const totalPlanned = sum(dailyRows.map((r) => r.tasksPlanned));

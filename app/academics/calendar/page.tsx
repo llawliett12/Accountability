@@ -2,10 +2,7 @@ import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { fetchOccurrencesInRange, fetchAssessments, fetchDeadlines, fetchClasses } from "@/lib/academics/queries";
 import { weekBounds, shiftWeek } from "@/lib/academics/engine";
-
-function todayISO(): string {
-  return new Date().toISOString().slice(0, 10);
-}
+import { todayISO } from "@/lib/date";
 
 export default async function AcademicCalendarPage({
   searchParams,

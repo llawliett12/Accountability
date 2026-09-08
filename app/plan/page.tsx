@@ -2,10 +2,7 @@ import { createClient } from "@/lib/supabase/server";
 import { getOrCreateDailyPlan } from "@/lib/actions";
 import TaskQuickAdd from "@/components/TaskQuickAdd";
 import TaskRow from "@/components/TaskRow";
-
-function todayISO() {
-  return new Date().toISOString().slice(0, 10);
-}
+import { todayISO } from "@/lib/date";
 
 export default async function PlanPage() {
   const supabase = await createClient();

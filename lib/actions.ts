@@ -12,10 +12,7 @@ import {
   nextStreakState,
 } from "@/lib/scoring/engine";
 import { recomputeAndStoreProgress } from "@/lib/goals/actions";
-
-function todayISO(): string {
-  return new Date().toISOString().slice(0, 10);
-}
+import { todayISO } from "@/lib/date";
 
 // Ensures a daily_plans row exists for today (or a given date) and returns its id.
 export async function getOrCreateDailyPlan(date: string = todayISO()) {

@@ -3,13 +3,10 @@
 import { useState, useTransition, useRef } from "react";
 import { analyzeScreenshot, saveScreenTimeRecord } from "@/lib/screen-time/actions";
 import type { AppUsage } from "@/lib/screen-time/types";
+import { todayISO } from "@/lib/date";
 import AppUsageRows from "./AppUsageRows";
 
 type Phase = "idle" | "analyzing" | "review" | "saved";
-
-function todayISO() {
-  return new Date().toISOString().slice(0, 10);
-}
 
 export default function ScreenTimeCapture() {
   const [phase, setPhase] = useState<Phase>("idle");
@@ -19,6 +16,7 @@ export default function ScreenTimeCapture() {
   const [screenshotPath, setScreenshotPath] = useState<string | null>(null);
   const [source, setSource] = useState<"gemini" | "manual">("manual");
   const [banner, setBanner] = useState<string | null>(null);
+  const [saveError, setSaveError] = useState<string | null>(null);
   const [warnings, setWarnings] = useState<string[]>([]);
   const [pending, startTransition] = useTransition();
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -26,28 +24,38 @@ export default function ScreenTimeCapture() {
   function handleFileSelected(file: File) {
     setPhase("analyzing");
     setBanner(null);
+    setSaveError(null);
     startTransition(async () => {
-      const formData = new FormData();
-      formData.append("screenshot", file);
-      const result = await analyzeScreenshot(formData);
+      try {
+        const formData = new FormData();
+        formData.append("screenshot", file);
+        const result = await analyzeScreenshot(formData);
 
-      setScreenshotPath(result.screenshotPath);
+        setScreenshotPath(result.screenshotPath);
 
-      if (result.success) {
-        setSource("gemini");
-        setDate(result.date ?? todayISO());
-        setApps(result.apps);
-        setTotalMinutes(result.totalMinutes);
-        setWarnings(result.warnings);
-        if (!result.date) {
-          setBanner("Couldn't read the date automatically — please set it below.");
+        if (result.success) {
+          setSource("gemini");
+          setDate(result.date ?? todayISO());
+          setApps(result.apps);
+          setTotalMinutes(result.totalMinutes);
+          setWarnings(result.warnings);
+          if (!result.date) {
+            setBanner("Couldn't read the date automatically — please set it below.");
+          }
+        } else {
+          setSource("manual");
+          setApps([]);
+          setTotalMinutes(0);
+          setWarnings([]);
+          setBanner(`${result.errorMessage} You can still enter it manually below.`);
         }
-      } else {
+      } catch (err: unknown) {
         setSource("manual");
         setApps([]);
         setTotalMinutes(0);
         setWarnings([]);
-        setBanner(`${result.errorMessage} You can still enter it manually below.`);
+        const message = err instanceof Error ? err.message : "Failed to analyze screenshot.";
+        setBanner(`${message} You can still enter it manually below.`);
       }
       setPhase("review");
     });
@@ -59,6 +67,7 @@ export default function ScreenTimeCapture() {
     setApps([]);
     setTotalMinutes(0);
     setBanner(null);
+    setSaveError(null);
     setWarnings([]);
     setPhase("review");
   }
@@ -66,15 +75,20 @@ export default function ScreenTimeCapture() {
   const computedTotal = apps.length > 0 ? apps.reduce((s, a) => s + a.duration_minutes, 0) : totalMinutes;
 
   function save() {
+    setSaveError(null);
     startTransition(async () => {
-      await saveScreenTimeRecord({
-        date,
-        apps,
-        totalMinutes: computedTotal,
-        source,
-        screenshotPath,
-      });
-      setPhase("saved");
+      try {
+        await saveScreenTimeRecord({
+          date,
+          apps,
+          totalMinutes: computedTotal,
+          source,
+          screenshotPath,
+        });
+        setPhase("saved");
+      } catch (err: unknown) {
+        setSaveError(err instanceof Error ? err.message : "Failed to save screen time record. Please try again.");
+      }
     });
   }
 
@@ -143,6 +157,11 @@ export default function ScreenTimeCapture() {
       </h2>
 
       {banner && <p className="rounded-lg bg-amber-950 p-2 text-xs text-amber-300">{banner}</p>}
+      {saveError && (
+        <p className="rounded-lg border border-red-800/50 bg-red-950/70 p-2 text-xs text-red-300">
+          {saveError}
+        </p>
+      )}
       {warnings.map((w, i) => (
         <p key={i} className="rounded-lg bg-amber-950 p-2 text-xs text-amber-300">
           {w}
@@ -178,16 +197,17 @@ export default function ScreenTimeCapture() {
       <div className="flex gap-2 pt-2">
         <button
           onClick={() => setPhase("idle")}
-          className="flex-1 rounded-lg bg-neutral-800 py-2 text-sm"
+          disabled={pending}
+          className="flex-1 rounded-lg bg-neutral-800 py-2 text-sm disabled:opacity-50"
         >
           Cancel
         </button>
         <button
           onClick={save}
           disabled={pending}
-          className="flex-1 rounded-lg bg-white py-2 text-sm font-medium text-neutral-950"
+          className="flex-1 rounded-lg bg-white py-2 text-sm font-medium text-neutral-950 disabled:opacity-50"
         >
-          Confirm &amp; Save
+          {pending ? "Saving..." : "Confirm & Save"}
         </button>
       </div>
     </div>

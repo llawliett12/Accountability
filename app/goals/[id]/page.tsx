@@ -52,16 +52,21 @@ export default async function GoalDetailPage({
   return (
     <div className="space-y-5">
       <nav className="flex flex-wrap items-center gap-1 text-xs text-neutral-500">
-        <Link href="/goals" className="underline">
+        <Link href="/goals" className="underline shrink-0">
           Goals
         </Link>
         {path.map((p, i) => (
-          <span key={p.id} className="flex items-center gap-1">
+          <span key={p.id} className="flex items-center gap-1 min-w-0">
             <span>/</span>
             {i === path.length - 1 ? (
-              <span className="text-neutral-300">{p.title}</span>
+              <span className="text-neutral-300 truncate max-w-[140px] inline-block align-bottom">
+                {p.title}
+              </span>
             ) : (
-              <Link href={`/goals/${p.id}`} className="underline">
+              <Link
+                href={`/goals/${p.id}`}
+                className="underline truncate max-w-[120px] inline-block align-bottom"
+              >
                 {p.title}
               </Link>
             )}
@@ -73,9 +78,9 @@ export default async function GoalDetailPage({
         <span className="rounded bg-neutral-800 px-1.5 py-0.5 text-[10px] uppercase text-neutral-400">
           {goal.level}
         </span>
-        <h1 className="mt-1 text-2xl font-semibold">{goal.title}</h1>
+        <h1 className="mt-1 text-2xl font-semibold break-words">{goal.title}</h1>
         {goal.description && (
-          <p className="mt-1 text-sm text-neutral-400">{goal.description}</p>
+          <p className="mt-1 text-sm text-neutral-400 break-words">{goal.description}</p>
         )}
       </div>
 
@@ -131,6 +136,15 @@ export default async function GoalDetailPage({
         </section>
       )}
 
+      {children.length === 0 && childLevel && (
+        <div className="rounded-xl border border-neutral-800 bg-neutral-900/40 p-4 text-center">
+          <p className="text-sm text-neutral-400">No {childLevel} goals yet.</p>
+          <p className="mt-1 text-xs text-neutral-500">
+            Break this {goal.level} goal down into smaller milestones below.
+          </p>
+        </div>
+      )}
+
       {childLevel && (
         <section className="space-y-2">
           <h2 className="text-sm font-medium text-neutral-400">
@@ -149,9 +163,15 @@ export default async function GoalDetailPage({
           Linked tasks ({linkedTasks?.length ?? 0})
         </h2>
         {(linkedTasks ?? []).length === 0 ? (
-          <p className="text-sm text-neutral-500">
-            No daily tasks linked yet — link one from the Plan screen.
-          </p>
+          <div className="rounded-xl border border-neutral-800 bg-neutral-900/40 p-4 text-center">
+            <p className="text-sm text-neutral-400">No daily tasks linked yet.</p>
+            <Link
+              href="/plan"
+              className="mt-2 inline-flex items-center text-xs font-medium text-white underline underline-offset-4"
+            >
+              Go to Plan to link tasks →
+            </Link>
+          </div>
         ) : (
           <ul className="space-y-1.5">
             {(linkedTasks ?? []).map((t) => (
@@ -159,8 +179,8 @@ export default async function GoalDetailPage({
                 key={t.id}
                 className="flex items-center justify-between rounded-xl bg-neutral-900 px-3 py-2 text-sm"
               >
-                <span>{t.title}</span>
-                <span className="text-xs text-neutral-500">{t.status}</span>
+                <span className="truncate min-w-0 mr-2">{t.title}</span>
+                <span className="shrink-0 text-xs text-neutral-500">{t.status}</span>
               </li>
             ))}
           </ul>

@@ -1,3 +1,5 @@
+"use client";
+
 export default function OfflinePage() {
   return (
     <div className="flex min-h-[70vh] flex-col items-center justify-center space-y-3 text-center">
@@ -8,6 +10,13 @@ export default function OfflinePage() {
         on this device and will sync automatically once you&apos;re back
         online.
       </p>
+      <button
+        type="button"
+        onClick={() => window.location.reload()}
+        className="mt-2 rounded-lg bg-neutral-800 px-4 py-2 text-sm font-medium text-neutral-200"
+      >
+        Try reloading
+      </button>
     </div>
   );
 }

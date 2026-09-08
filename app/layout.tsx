@@ -36,7 +36,7 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
-      <body className="min-h-screen bg-neutral-950 pb-16 text-neutral-100 antialiased">
+      <body className="min-h-screen bg-neutral-950 pb-24 text-neutral-100 antialiased">
         <ServiceWorkerRegister />
         <OfflineSyncProvider>
           <OfflineBanner />

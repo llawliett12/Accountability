@@ -28,7 +28,7 @@ export default function ReconciliationList({ tasks }: { tasks: Task[] }) {
       {tasks.map((task) => (
         <li key={task.id} className="rounded-2xl bg-neutral-900 p-3">
           <p className="mb-2 text-sm font-medium">{task.title}</p>
-          <div className="grid grid-cols-1 gap-1">
+          <div className="grid grid-cols-1 gap-1.5">
             {ANSWERS.map((a) => (
               <button
                 key={a.value}
@@ -36,7 +36,7 @@ export default function ReconciliationList({ tasks }: { tasks: Task[] }) {
                 onClick={() =>
                   startTransition(() => reconcileTask(task.id, a.value))
                 }
-                className="rounded-lg bg-neutral-800 py-2 text-left text-xs"
+                className="min-h-[44px] rounded-xl bg-neutral-800 px-3.5 py-2.5 text-left text-xs font-medium text-neutral-200 hover:bg-neutral-700 active:bg-neutral-600 disabled:opacity-50 transition-colors"
               >
                 {a.label}
               </button>

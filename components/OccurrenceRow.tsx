@@ -53,15 +53,15 @@ export default function OccurrenceRow({
         )}
       </div>
 
-      <div className="mb-2 flex flex-wrap gap-1.5">
+      <div className="mb-2.5 flex flex-wrap gap-2">
         {ATTENDANCE_OPTIONS.map((o) => (
           <button
             key={o.value}
             type="button"
             disabled={pending}
             onClick={() => setAttendance(o.value)}
-            className={`rounded-lg px-2.5 py-1 text-xs ${
-              occurrence.attendance_status === o.value ? o.color : "bg-neutral-800 text-neutral-400"
+            className={`min-h-[44px] flex-1 inline-flex items-center justify-center rounded-xl px-3 py-2 text-xs font-medium transition-colors disabled:opacity-50 ${
+              occurrence.attendance_status === o.value ? o.color : "bg-neutral-800 text-neutral-400 hover:bg-neutral-700"
             }`}
           >
             {o.label}
@@ -69,39 +69,43 @@ export default function OccurrenceRow({
         ))}
       </div>
 
-      <div className="flex items-center justify-between">
-        <div className="flex gap-1">
+      <div className="flex flex-wrap items-center justify-between gap-2 border-t border-neutral-800/60 pt-2">
+        <div className="flex gap-2">
           <button
             type="button"
+            disabled={pending}
             onClick={togglePrepared}
-            className={`rounded-lg px-2 py-1 text-xs ${
-              occurrence.prepared ? "bg-white text-neutral-950" : "bg-neutral-800 text-neutral-400"
+            className={`min-h-[44px] rounded-xl px-3.5 py-2 text-xs font-medium transition-colors disabled:opacity-50 ${
+              occurrence.prepared ? "bg-white text-neutral-950 font-semibold" : "bg-neutral-800 text-neutral-400 hover:bg-neutral-700"
             }`}
           >
-            Prepared
+            {occurrence.prepared ? "✓ Prepared" : "Prepared"}
           </button>
           <button
             type="button"
+            disabled={pending}
             onClick={toggleReviewed}
-            className={`rounded-lg px-2 py-1 text-xs ${
-              occurrence.reviewed ? "bg-white text-neutral-950" : "bg-neutral-800 text-neutral-400"
+            className={`min-h-[44px] rounded-xl px-3.5 py-2 text-xs font-medium transition-colors disabled:opacity-50 ${
+              occurrence.reviewed ? "bg-white text-neutral-950 font-semibold" : "bg-neutral-800 text-neutral-400 hover:bg-neutral-700"
             }`}
           >
-            Reviewed
+            {occurrence.reviewed ? "✓ Reviewed" : "Reviewed"}
           </button>
         </div>
-        <div className="flex gap-0.5">
+        <div className="flex items-center gap-1.5">
+          <span className="text-[11px] text-neutral-500 mr-0.5">Focus:</span>
           {[1, 2, 3, 4, 5].map((n) => (
             <button
               key={n}
               type="button"
+              disabled={pending}
               onClick={() => rate(n)}
-              className={`h-6 w-6 rounded text-xs ${
+              className={`h-9 w-9 rounded-xl text-xs font-medium flex items-center justify-center transition-colors disabled:opacity-50 ${
                 (occurrence.listening_rating ?? 0) >= n
-                  ? "bg-amber-500 text-black"
-                  : "bg-neutral-800 text-neutral-500"
+                  ? "bg-amber-500 text-black font-semibold"
+                  : "bg-neutral-800 text-neutral-500 hover:bg-neutral-700"
               }`}
-              title="Listening/engagement"
+              title={`Listening/engagement: ${n}/5`}
             >
               {n}
             </button>

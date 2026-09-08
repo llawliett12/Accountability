@@ -2,12 +2,9 @@ import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { fetchDeadlines, fetchClasses } from "@/lib/academics/queries";
 import { isDeadlineOverdue } from "@/lib/academics/engine";
+import { todayISO } from "@/lib/date";
 import DeadlineQuickAdd from "@/components/DeadlineQuickAdd";
 import DeadlineRow from "@/components/DeadlineRow";
-
-function todayISO(): string {
-  return new Date().toISOString().slice(0, 10);
-}
 
 export default async function DeadlinesPage() {
   const supabase = await createClient();
@@ -53,7 +50,12 @@ export default async function DeadlinesPage() {
       <section className="space-y-2">
         <h2 className="text-sm font-medium text-neutral-400">Upcoming</h2>
         {pending.length === 0 ? (
-          <p className="text-sm text-neutral-500">Nothing pending.</p>
+          <div className="rounded-xl border border-neutral-800 bg-neutral-900/40 p-4 text-center">
+            <p className="text-sm text-neutral-400">No upcoming deadlines.</p>
+            <p className="mt-1 text-xs text-neutral-500">
+              Use the form above to add an assignment, project, or exam deadline.
+            </p>
+          </div>
         ) : (
           pending.map((d) => <DeadlineRow key={d.id} deadline={d} />)
         )}

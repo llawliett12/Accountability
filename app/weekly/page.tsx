@@ -1,10 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { fetchDailyMetrics, addDays } from "@/lib/analytics/queries";
 import { sum, average, compare } from "@/lib/analytics/engine";
-
-function todayISO() {
-  return new Date().toISOString().slice(0, 10);
-}
+import { todayISO } from "@/lib/date";
 
 function summarize(rows: Awaited<ReturnType<typeof fetchDailyMetrics>>) {
   const scores = rows.map((r) => r.disciplineScore).filter((s): s is number => s !== null);
