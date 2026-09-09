@@ -13,11 +13,12 @@ export default function CheckInForm() {
   function log(drift: "on_track" | "drifting") {
     if (!activity.trim()) return;
     const actual_activity = activity.trim();
+    const startedAt = new Date().toISOString();
     const clientId = newClientId();
     setError(null);
     startTransition(async () => {
-      const result = await runOrQueue("check_in", { actual_activity, drift_state: drift }, () =>
-        createCheckIn({ actual_activity, drift_state: drift, clientId }),
+      const result = await runOrQueue("check_in", { actual_activity, drift_state: drift, startedAt }, () =>
+        createCheckIn({ actual_activity, drift_state: drift, clientId, startedAt }),
         clientId
       );
       if (result.status === "error") {

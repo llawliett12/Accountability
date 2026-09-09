@@ -5,7 +5,7 @@ import { fetchDailyMetrics, addDays } from "@/lib/analytics/queries";
 import { sum, average } from "@/lib/analytics/engine";
 import { fetchAcademicDashboard } from "@/lib/academics/queries";
 import { fetchScreenTimeMinutesByDate } from "@/lib/screen-time/queries";
-import { todayISO } from "@/lib/date";
+import { DEFAULT_TIMEZONE, todayISO } from "@/lib/date";
 import ReconciliationList from "@/components/ReconciliationList";
 import RunScoringButton from "@/components/RunScoringButton";
 import SleepLogForm from "@/components/SleepLogForm";
@@ -38,6 +38,7 @@ export default async function ReviewPage() {
 
   const today = todayISO();
   const weekStart = addDays(today, -6);
+  const tomorrow = addDays(today, 1);
 
   // Parallel fetch: daily plan, 7-day metrics, academic summary, screen time, and streaks.
   const [
@@ -49,6 +50,7 @@ export default async function ReviewPage() {
     reviewNoteRes,
     foodHabitsRes,
     sleepPeriodsRes,
+    completedActivitiesRes,
   ] = await Promise.all([
     getOrCreateDailyPlan(today, user.id),
     fetchDailyMetrics(user.id, weekStart, today),
@@ -73,6 +75,14 @@ export default async function ReviewPage() {
       .eq("user_id", user.id)
       .eq("date", today)
       .order("bedtime", { ascending: false }),
+    supabase
+      .from("check_ins")
+      .select("id, actual_activity, timestamp, completed_at")
+      .eq("user_id", user.id)
+      .eq("status", "completed")
+      .gte("timestamp", `${today}T00:00:00+05:30`)
+      .lt("timestamp", `${tomorrow}T00:00:00+05:30`)
+      .order("timestamp", { ascending: true }),
   ]);
 
   // Map of date -> score
@@ -132,6 +142,7 @@ export default async function ReviewPage() {
       : null;
 
   const todayScore = scoreByDate.get(today) ?? null;
+  const completedActivities = completedActivitiesRes.data ?? [];
 
   return (
     <div className="space-y-6 pb-6">
@@ -357,6 +368,11 @@ export default async function ReviewPage() {
         <div className="space-y-1.5 pt-2">
           <div className="text-xs font-medium text-neutral-300 font-mono">5. Food Habits</div>
           <FoodHabitLedger date={today} initialMeals={foodHabitsRes.data ?? null} />
+        </div>
+
+        <div className="space-y-1.5 pt-2">
+          <div className="text-xs font-medium text-neutral-300 font-mono">Completed Activities</div>
+          {completedActivities.length === 0 ? <p className="text-xs text-neutral-500">No completed activities today.</p> : <div className="ledger-scroll"><table className="ledger-table min-w-[420px]"><thead><tr><th>Work</th><th>Start</th><th>End</th><th>Duration</th></tr></thead><tbody>{completedActivities.map((entry) => { const start = new Date(entry.timestamp); const end = entry.completed_at ? new Date(entry.completed_at) : null; const minutes = end ? Math.max(0, Math.round((end.getTime() - start.getTime()) / 60_000)) : null; return <tr key={entry.id}><td className="text-neutral-200">{entry.actual_activity}</td><td className="font-mono text-[11px] text-neutral-500">{start.toLocaleTimeString([], { timeZone: DEFAULT_TIMEZONE, hour: "2-digit", minute: "2-digit" })}</td><td className="font-mono text-[11px] text-neutral-500">{end?.toLocaleTimeString([], { timeZone: DEFAULT_TIMEZONE, hour: "2-digit", minute: "2-digit" }) ?? "--"}</td><td className="font-mono text-[11px] text-neutral-300">{minutes === null ? "--" : `${minutes} min`}</td></tr>; })}</tbody></table></div>}
         </div>
 
         {/* DISCIPLINE SCORING */}

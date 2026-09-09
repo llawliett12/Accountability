@@ -308,7 +308,13 @@ export async function createCheckIn(input: {
   intended_task_id?: string;
   drift_state: "on_track" | "drifting" | "unknown";
   clientId?: string;
+  startedAt?: string;
 }) {
+  const actualActivity = input.actual_activity.trim();
+  if (!actualActivity) throw new Error("Activity cannot be empty");
+  const startedAt = input.startedAt && !Number.isNaN(Date.parse(input.startedAt))
+    ? input.startedAt
+    : new Date().toISOString();
   const supabase = await createClient();
   const {
     data: { user },
@@ -318,18 +324,34 @@ export async function createCheckIn(input: {
   const { error } = await supabase.from("check_ins").upsert(
     {
       user_id: user.id,
-      actual_activity: input.actual_activity,
+      actual_activity: actualActivity,
       intended_task_id: input.intended_task_id ?? null,
       drift_state: input.drift_state,
       client_id: input.clientId ?? null,
+      timestamp: startedAt,
+      status: "ongoing",
     },
     input.clientId ? { onConflict: "user_id,client_id", ignoreDuplicates: true } : undefined
   );
   if (error) throw error;
+
+  const savedQuery = supabase
+    .from("check_ins")
+    .select("id, actual_activity, timestamp, status, completed_at")
+    .eq("user_id", user.id)
+    .order("timestamp", { ascending: false })
+    .limit(1);
+  const { data: saved, error: savedError } = input.clientId
+    ? await savedQuery.eq("client_id", input.clientId).maybeSingle()
+    : await savedQuery.eq("timestamp", startedAt).maybeSingle();
+  if (savedError || !saved) throw savedError ?? new Error("Activity was not saved");
+
   await bumpStreak(supabase, user.id, "tracking", todayISO());
 
   revalidatePath("/now");
   revalidatePath("/");
+  revalidatePath("/review");
+  return saved;
 }
 
 export async function updateCheckIn(checkInId: string, actualActivity: string) {
@@ -352,6 +374,29 @@ export async function deleteCheckIn(checkInId: string) {
   if (error) throw error;
   revalidatePath("/");
   revalidatePath("/now");
+  revalidatePath("/review");
+}
+
+export async function completeCheckIn(checkInId: string, completedAt?: string) {
+  const resolvedCompletedAt = completedAt && !Number.isNaN(Date.parse(completedAt))
+    ? completedAt
+    : new Date().toISOString();
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error("Not authenticated");
+  const { data, error } = await supabase
+    .from("check_ins")
+    .update({ status: "completed", completed_at: resolvedCompletedAt })
+    .eq("id", checkInId)
+    .eq("user_id", user.id)
+    .eq("status", "ongoing")
+    .select("id")
+    .maybeSingle();
+  if (error) throw error;
+  if (!data) throw new Error("Activity is no longer ongoing");
+  revalidatePath("/");
+  revalidatePath("/now");
+  revalidatePath("/review");
 }
 
 // --- Focus timer: timestamp-based so it survives Android tab backgrounding ---

@@ -51,7 +51,7 @@ export default async function MorningDashboard(props: { searchParams?: Promise<{
       .select("id, title, level")
       .eq("user_id", userId)
       .neq("status", "completed"),
-    supabase.from("check_ins").select("id, actual_activity, drift_state, timestamp").eq("user_id", userId).gte("timestamp", `${date}T00:00:00`).lte("timestamp", `${date}T23:59:59`).order("timestamp", { ascending: false }).limit(5),
+    supabase.from("check_ins").select("id, actual_activity, drift_state, timestamp, status, completed_at").eq("user_id", userId).eq("status", "ongoing").order("timestamp", { ascending: false }).limit(5),
     supabase.from("daily_plans").select("date, tasks(status)").eq("user_id", userId).gte("date", gridStart).lte("date", date).order("date", { ascending: true }),
     supabase.from("discipline_scores").select("date, score").eq("user_id", userId).gte("date", gridStart).lte("date", date),
   ]);

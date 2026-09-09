@@ -31,12 +31,13 @@ async function replay(action: QueuedAction): Promise<void> {
       return;
     }
     case "check_in": {
-      const { actual_activity, intended_task_id, drift_state } = action.payload as {
+      const { actual_activity, intended_task_id, drift_state, startedAt } = action.payload as {
         actual_activity: string;
         intended_task_id?: string;
         drift_state: "on_track" | "drifting" | "unknown";
+        startedAt?: string;
       };
-      await createCheckIn({ actual_activity, intended_task_id, drift_state, clientId: action.id });
+      await createCheckIn({ actual_activity, intended_task_id, drift_state, clientId: action.id, startedAt });
       return;
     }
     case "mood_log": {
