@@ -21,17 +21,19 @@ export default async function MorningDashboard(props: { searchParams?: Promise<{
   const today = todayISO();
   const date = searchParams?.date || today;
   const section = searchParams?.section as HomeSection | undefined;
+  const needsPriorityDetail = section === "priorities";
+  const needsConsistencyDetail = section === "consistency";
   const userId = user?.id ?? "";
 
   // Parallel fetch: daily plan + tasks, class occurrences, verdict, streaks, goals
   const gridStart = shiftDateISO(date, -83);
   const [planRes, classesRes, verdictRes, streaksRes, goalsRes, checkInsRes, gridPlansRes, scoreRes] = await Promise.all([
-    supabase
+    needsPriorityDetail ? supabase
       .from("daily_plans")
       .select("id, tasks(id, daily_plan_id, user_id, title, category, priority, planned_duration_min, planned_start, planned_end, deadline, notes, status, is_top3, goal_id)")
       .eq("user_id", userId)
       .eq("date", date)
-      .maybeSingle(),
+      .maybeSingle() : supabase.from("daily_plans").select("id, tasks(status)").eq("user_id", userId).eq("date", date).maybeSingle(),
     supabase
       .from("class_occurrences")
       .select("id, start_time, date, attendance_status, status, classes(name, location)")
@@ -50,14 +52,14 @@ export default async function MorningDashboard(props: { searchParams?: Promise<{
       .from("streaks")
       .select("streak_type, current_count")
       .eq("user_id", userId),
-    supabase
+    needsPriorityDetail ? supabase
       .from("goals")
       .select("id, title, level")
       .eq("user_id", userId)
-      .neq("status", "completed"),
+      .neq("status", "completed") : Promise.resolve({ data: [] as { id: string; title: string; level: string }[] }),
     supabase.from("check_ins").select("id, actual_activity, drift_state, timestamp, status, completed_at").eq("user_id", userId).in("status", ["ongoing", "paused"]).order("timestamp", { ascending: false }).limit(5),
-    supabase.from("daily_plans").select("date, tasks(status)").eq("user_id", userId).gte("date", gridStart).lte("date", date).order("date", { ascending: true }),
-    supabase.from("discipline_scores").select("date, score").eq("user_id", userId).gte("date", gridStart).lte("date", date),
+    needsConsistencyDetail ? supabase.from("daily_plans").select("date, tasks(status)").eq("user_id", userId).gte("date", gridStart).lte("date", date).order("date", { ascending: true }) : Promise.resolve({ data: [] as { date: string; tasks: { status: string }[] }[] }),
+    needsConsistencyDetail ? supabase.from("discipline_scores").select("date, score").eq("user_id", userId).gte("date", gridStart).lte("date", date) : Promise.resolve({ data: [] as { date: string; score: number | null }[] }),
   ]);
 
   const rawTasks = (planRes.data?.tasks as unknown as Task[]) ?? [];

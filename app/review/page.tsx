@@ -81,14 +81,20 @@ export default async function ReviewPage(props: { searchParams?: Promise<{ date?
       .eq("user_id", user.id)
       .eq("date", selectedDate)
       .order("bedtime", { ascending: false }),
-    supabase
+    section === "activities" ? supabase
       .from("check_ins")
       .select("id, actual_activity, timestamp, completed_at")
       .eq("user_id", user.id)
       .eq("status", "completed")
       .gte("timestamp", `${selectedDate}T00:00:00+05:30`)
       .lt("timestamp", `${tomorrow}T00:00:00+05:30`)
-      .order("timestamp", { ascending: true }),
+      .order("timestamp", { ascending: true }) : supabase
+      .from("check_ins")
+      .select("id", { count: "exact", head: true })
+      .eq("user_id", user.id)
+      .eq("status", "completed")
+      .gte("timestamp", `${selectedDate}T00:00:00+05:30`)
+      .lt("timestamp", `${tomorrow}T00:00:00+05:30`),
     supabase
       .from("meditation_logs")
       .select("happened, duration_min")
@@ -154,7 +160,8 @@ export default async function ReviewPage(props: { searchParams?: Promise<{ date?
       : null;
 
   const todayScore = scoreByDate.get(selectedDate) ?? null;
-  const completedActivities = completedActivitiesRes.data ?? [];
+  const completedActivities = (completedActivitiesRes.data ?? []) as { id: string; actual_activity: string; timestamp: string; completed_at: string | null }[];
+  const completedActivityCount = completedActivitiesRes.count ?? completedActivities.length;
 
   return (
     <div className="space-y-6 pb-6">
@@ -170,7 +177,7 @@ export default async function ReviewPage(props: { searchParams?: Promise<{ date?
       {!section && <section aria-label="Review sections">
         <SectionBlock href={`/review?date=${selectedDate}&section=sleep`} title="Sleep & Recovery" summary={avgSleepMinutes ? `${formatMinutesToHours(avgSleepMinutes)} average this week` : "No sleep recorded yet"} tone="good" />
         <SectionBlock href={`/review?date=${selectedDate}&section=food`} title="Eating Habits" summary={foodHabitsRes.data ? "Meals recorded for this day" : "No meals recorded for this day"} />
-        <SectionBlock href={`/review?date=${selectedDate}&section=activities`} title="What I Did" summary={`${completedActivities.length} completed activities`} tone="good" />
+        <SectionBlock href={`/review?date=${selectedDate}&section=activities`} title="What I Did" summary={`${completedActivityCount} completed activities`} tone="good" />
         <SectionBlock href={`/review?date=${selectedDate}&section=weekly`} title="Weekly Performance" summary={`${tasksCompleted}/${tasksPlanned} tasks completed in the last 7 days`} tone="active" />
         <SectionBlock href={`/review?date=${selectedDate}&section=academics`} title="Academic Status" summary={averageAcademicPct !== null ? `${averageAcademicPct}% assessment average` : "No scored assessments yet"} />
         <SectionBlock href={`/review?date=${selectedDate}&section=night`} title="Night Check-in" summary={`${tasksToReconcile?.length ?? 0} open tasks to reconcile`} tone={(tasksToReconcile?.length ?? 0) > 0 ? "warn" : "neutral"} />

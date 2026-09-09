@@ -12,7 +12,7 @@ export default function SectionBlock({
   tone?: "neutral" | "active" | "good" | "warn";
 }) {
   return (
-    <Link href={href} className="section-block">
+    <Link href={href} prefetch={false} className="section-block">
       <span className={`section-block-dot section-block-dot--${tone}`} aria-hidden="true" />
       <span className="min-w-0 flex-1">
         <span className="block text-sm font-semibold text-neutral-100">{title}</span>
