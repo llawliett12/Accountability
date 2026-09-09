@@ -53,7 +53,7 @@ export default async function MorningDashboard(props: { searchParams?: Promise<{
       .neq("status", "completed"),
     supabase.from("check_ins").select("id, actual_activity, drift_state, timestamp").eq("user_id", userId).gte("timestamp", `${date}T00:00:00`).lte("timestamp", `${date}T23:59:59`).order("timestamp", { ascending: false }).limit(5),
     supabase.from("daily_plans").select("date, tasks(status)").eq("user_id", userId).gte("date", gridStart).lte("date", date).order("date", { ascending: true }),
-    supabase.from("daily_metrics").select("date, discipline_score").eq("user_id", userId).gte("date", gridStart).lte("date", date),
+    supabase.from("discipline_scores").select("date, score").eq("user_id", userId).gte("date", gridStart).lte("date", date),
   ]);
 
   const rawTasks = (planRes.data?.tasks as unknown as Task[]) ?? [];
@@ -99,7 +99,7 @@ export default async function MorningDashboard(props: { searchParams?: Promise<{
 
   const verdict = verdictRes.data;
   const goals = goalsRes.data ?? [];
-  const scoreByDate = new Map((scoreRes.data ?? []).map((row) => [row.date, row.discipline_score as number | null]));
+  const scoreByDate = new Map((scoreRes.data ?? []).map((row) => [row.date, row.score as number | null]));
   const gridDays = (gridPlansRes.data ?? []).map((plan) => {
     const planTasks = (plan.tasks ?? []) as { status: string }[];
     return { date: plan.date, planned: planTasks.length, completed: planTasks.filter((task) => task.status === "completed").length, score: scoreByDate.get(plan.date) ?? null };

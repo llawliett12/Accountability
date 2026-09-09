@@ -39,15 +39,13 @@ export default async function ReviewPage() {
   const today = todayISO();
   const weekStart = addDays(today, -6);
 
-  // Parallel fetch: daily plan, 7-day metrics, academic summary, screen time, streaks, today score, weekly scores
+  // Parallel fetch: daily plan, 7-day metrics, academic summary, screen time, and streaks.
   const [
     planId,
     weeklyMetrics,
     academicDash,
     screenTimeMap,
     streaksRes,
-    todayMetricRes,
-    weekDailyScoresRes,
     reviewNoteRes,
     foodHabitsRes,
     sleepPeriodsRes,
@@ -57,18 +55,6 @@ export default async function ReviewPage() {
     fetchAcademicDashboard(user.id).catch(() => null),
     fetchScreenTimeMinutesByDate(user.id, weekStart, today).catch(() => new Map<string, number>()),
     supabase.from("streaks").select("*").eq("user_id", user.id),
-    supabase
-      .from("daily_metrics")
-      .select("discipline_score")
-      .eq("user_id", user.id)
-      .eq("date", today)
-      .maybeSingle(),
-    supabase
-      .from("daily_metrics")
-      .select("date, discipline_score")
-      .eq("user_id", user.id)
-      .gte("date", weekStart)
-      .lte("date", today),
     supabase
       .from("review_notes")
       .select("content")
@@ -91,9 +77,9 @@ export default async function ReviewPage() {
 
   // Map of date -> score
   const scoreByDate = new Map<string, number>();
-  (weekDailyScoresRes.data ?? []).forEach((row) => {
-    if (row.discipline_score !== null && row.discipline_score !== undefined) {
-      scoreByDate.set(row.date, row.discipline_score);
+  weeklyMetrics.forEach((row) => {
+    if (row.disciplineScore !== null) {
+      scoreByDate.set(row.date, row.disciplineScore);
     }
   });
 
@@ -145,7 +131,7 @@ export default async function ReviewPage() {
         )
       : null;
 
-  const todayScore = todayMetricRes.data?.discipline_score ?? null;
+  const todayScore = scoreByDate.get(today) ?? null;
 
   return (
     <div className="space-y-6 pb-6">
