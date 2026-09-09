@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { createCheckIn, deleteCheckIn, updateCheckIn, updateCheckInStatus } from "@/lib/actions";
+import { createCheckIn, updateCheckInStatus } from "@/lib/actions";
 import { newClientId, runOrQueue } from "@/lib/offline/client";
 
 export type ActivityEntry = {
@@ -67,35 +67,35 @@ export default function ActivityLedger({ initialEntries }: { initialEntries: Act
   }
 
   return (
-    <section className="space-y-2">
+    <section className="current-work space-y-3">
       <div className="ledger-heading">
         <div>
           <h2>What I&apos;m doing right now</h2>
           <p>What did you start doing? Start time is captured automatically. Newest first.</p>
         </div>
-        <span className="ledger-count">{entries.length} logged</span>
+        <span className="ledger-count">{entries.length} active</span>
       </div>
-      <div className="ledger-scroll">
-        <table className="ledger-table min-w-[360px]">
+      <div className="ledger-scroll current-work-scroll">
+        <table className="ledger-table current-work-table min-w-[380px]">
           <thead>
-            <tr><th className="w-12">S.No</th><th>Work</th><th className="w-20">Start</th><th className="w-20">Status</th><th className="w-28"></th></tr>
+            <tr><th className="w-12">#</th><th>Work</th><th className="w-20">Start</th><th className="w-28">Status</th><th className="w-20"></th></tr>
           </thead>
           <tbody>
             <tr className="ledger-add-row">
-              <td className="text-center text-amber-400">+</td>
+              <td className="text-center"><span className="current-work-dot current-work-dot--new" aria-hidden="true" /></td>
               <td><input value={activity} onChange={(event) => setActivity(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") addActivity(); }} placeholder="What did you start doing? Press Enter to log" aria-label="Current activity" /></td>
               <td className="text-neutral-600">now</td><td></td><td></td>
             </tr>
             {entries.map((entry, index) => (
               <tr key={entry.id}>
                 <td className="text-center text-neutral-500">{index + 1}</td>
-                <td className="font-medium text-neutral-200">{entry.actual_activity}</td>
-                <td className="font-mono text-[11px] text-neutral-500">{new Date(entry.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</td>
-                <td><select aria-label={`Status for ${entry.actual_activity}`} value={entry.status} disabled={pending} onChange={(event) => changeStatus(entry, event.target.value as ActivityEntry["status"])} className="h-8 max-w-20 bg-neutral-900 px-1 text-[10px] text-amber-300 outline-none disabled:opacity-50"><option value="ongoing">Ongoing</option><option value="paused">Paused</option><option value="completed">Completed</option></select></td>
-                <td className="pr-2 text-right whitespace-nowrap"><button type="button" disabled={pending} onClick={() => changeStatus(entry, "completed")} className="min-h-9 px-1 text-[10px] text-emerald-400 disabled:opacity-50">Complete</button><button type="button" onClick={() => { const value = prompt("Edit activity", entry.actual_activity); if (value === null || !value.trim()) return; const prior = entries; setEntries((rows) => rows.map((row) => row.id === entry.id ? { ...row, actual_activity: value.trim() } : row)); startTransition(async () => { try { await updateCheckIn(entry.id, value); } catch { setEntries(prior); setError("Could not edit this activity. Please try again."); } }); }} className="min-h-9 px-1 text-[10px] text-amber-400">Edit</button><button type="button" onClick={() => { if (!confirm("Delete this activity?")) return; const prior = entries; setEntries((rows) => rows.filter((row) => row.id !== entry.id)); startTransition(async () => { try { await deleteCheckIn(entry.id); } catch { setEntries(prior); setError("Could not delete this activity. Please try again."); } }); }} className="min-h-9 px-1 text-[10px] text-red-400">Delete</button></td>
+                <td className="current-work-name">{entry.actual_activity}</td>
+                <td className="current-work-time">{new Date(entry.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</td>
+                <td><label className="current-work-status"><span className={`current-work-dot current-work-dot--${entry.status}`} aria-hidden="true" /><select aria-label={`Status for ${entry.actual_activity}`} value={entry.status} disabled={pending} onChange={(event) => changeStatus(entry, event.target.value as ActivityEntry["status"])}><option value="ongoing">Ongoing</option><option value="paused">Paused</option><option value="completed">Completed</option></select></label></td>
+                <td className="pr-2 text-right whitespace-nowrap"><button type="button" disabled={pending} onClick={() => changeStatus(entry, "completed")} className="current-work-complete">Complete</button></td>
               </tr>
             ))}
-            {entries.length === 0 && <tr><td colSpan={5} className="ledger-empty">Nothing ongoing — add the first row above.</td></tr>}
+            {entries.length === 0 && <tr><td colSpan={5} className="ledger-empty current-work-empty">No current work yet. Add the first activity above.</td></tr>}
           </tbody>
         </table>
       </div>
