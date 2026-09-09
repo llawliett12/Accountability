@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { saveReviewNote } from "@/lib/review/actions";
+import { deleteReviewNote, saveReviewNote } from "@/lib/review/actions";
 
 export default function ReviewNotesLedger({ date, initialContent }: { date: string; initialContent: string | null }) {
   const [content, setContent] = useState(initialContent ?? "");
@@ -24,6 +24,14 @@ export default function ReviewNotesLedger({ date, initialContent }: { date: stri
       } catch (err) {
         setError(err instanceof Error ? err.message : "Could not save this note. Please try again.");
       }
+    });
+  }
+
+  function remove() {
+    if (!savedContent || !confirm("Delete this closing note?")) return;
+    startTransition(async () => {
+      try { await deleteReviewNote(date); setContent(""); setSavedContent(""); }
+      catch (err) { setError(err instanceof Error ? err.message : "Could not delete this note."); }
     });
   }
 
@@ -68,6 +76,7 @@ export default function ReviewNotesLedger({ date, initialContent }: { date: stri
               >
                 {pending ? "Saving…" : isChanged ? "Save" : savedContent ? "Saved" : "Save"}
               </button>
+              {savedContent && <button type="button" onClick={remove} disabled={pending} className="ml-2 min-h-9 text-xs text-red-400 disabled:opacity-50">Delete</button>}
             </td>
           </tr>
         </tbody>

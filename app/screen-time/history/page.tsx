@@ -4,6 +4,7 @@ import { fetchScreenTimeHistory, fetchAppTotals } from "@/lib/screen-time/querie
 import { addDays } from "@/lib/analytics/queries";
 import { average, strongestDay, weakestDay } from "@/lib/analytics/engine";
 import { todayISO } from "@/lib/date";
+import ScreenTimeHistoryRows from "@/components/screen-time/ScreenTimeHistoryRows";
 
 export default async function ScreenTimeHistoryPage() {
   const supabase = await createClient();
@@ -83,31 +84,7 @@ export default async function ScreenTimeHistoryPage() {
 
       <section>
         <h2 className="mb-2 text-sm font-medium text-neutral-400">Daily log</h2>
-        {monthHistory.length === 0 ? (
-          <div className="rounded-2xl bg-neutral-900 p-4 text-center">
-            <p className="text-sm text-neutral-500">Nothing logged in the last 30 days.</p>
-            <Link
-              href="/screen-time"
-              className="mt-3 inline-block rounded-lg bg-white px-4 py-2 text-xs font-medium text-neutral-950"
-            >
-              Log today&apos;s screen time →
-            </Link>
-          </div>
-        ) : (
-          <ul className="space-y-1">
-            {[...monthHistory].reverse().map((d) => (
-              <li
-                key={d.date}
-                className="flex justify-between rounded-2xl bg-neutral-900 p-3 text-sm"
-              >
-                <span>{d.date}</span>
-                <span className="text-neutral-500">
-                  {d.totalMinutes} min ({d.source})
-                </span>
-              </li>
-            ))}
-          </ul>
-        )}
+        <ScreenTimeHistoryRows initialRows={[...monthHistory].reverse()} />
       </section>
     </div>
   );

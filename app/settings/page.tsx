@@ -1,9 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
 import { getOrCreateScoringConfig } from "@/lib/actions";
-import { getOrCreateNotificationPreferences } from "@/lib/notifications/actions";
 import ScoringConfigEditor from "@/components/ScoringConfigEditor";
-import NotificationSettingsForm from "@/components/NotificationSettingsForm";
 import SignOutButton from "@/components/SignOutButton";
 
 export default async function SettingsPage() {
@@ -18,13 +16,11 @@ export default async function SettingsPage() {
   // migrations are catching up) must not take down account settings or sign
   // out. Keep each independent settings surface available when its own query
   // succeeds instead of failing the entire route.
-  const [configResult, notificationResult] = await Promise.allSettled([
-    getOrCreateScoringConfig(user.id),
-    getOrCreateNotificationPreferences(),
-  ]);
+  const configResult = await Promise.resolve(getOrCreateScoringConfig(user.id)).then(
+    (value) => ({ status: "fulfilled" as const, value }),
+    () => ({ status: "rejected" as const })
+  );
   const config = configResult.status === "fulfilled" ? configResult.value : null;
-  const notificationPrefs =
-    notificationResult.status === "fulfilled" ? notificationResult.value : null;
 
   return (
     <div className="space-y-6">
@@ -41,17 +37,6 @@ export default async function SettingsPage() {
           <SignOutButton />
         </div>
       </div>
-
-      {notificationPrefs ? (
-        <NotificationSettingsForm initialPrefs={notificationPrefs} />
-      ) : (
-        <section className="rounded-xl border border-amber-900/50 bg-amber-950/20 p-4">
-          <h2 className="text-sm font-medium text-amber-200">Notifications unavailable</h2>
-          <p className="mt-1 text-xs text-amber-100/70">
-            Notification preferences could not be loaded. Account settings remain available.
-          </p>
-        </section>
-      )}
 
       <div className="space-y-4">
         <div>

@@ -62,6 +62,15 @@ export async function saveFoodHabits(input: {
   revalidatePath("/review");
 }
 
+export async function deleteSleepPeriod(id: string) {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error("Not authenticated");
+  const { error } = await supabase.from("sleep_logs").delete().eq("id", id).eq("user_id", user.id);
+  if (error) throw error;
+  revalidatePath("/review");
+}
+
 export async function logMeditation(input: {
   date?: string;
   happened: boolean;

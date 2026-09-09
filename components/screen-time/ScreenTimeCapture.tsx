@@ -8,13 +8,13 @@ import AppUsageRows from "./AppUsageRows";
 
 type Phase = "idle" | "analyzing" | "review" | "saved";
 
-export default function ScreenTimeCapture() {
-  const [phase, setPhase] = useState<Phase>("idle");
-  const [date, setDate] = useState(todayISO());
-  const [apps, setApps] = useState<AppUsage[]>([]);
-  const [totalMinutes, setTotalMinutes] = useState(0);
+export default function ScreenTimeCapture({ initialRecord = null }: { initialRecord?: { date: string; totalMinutes: number; source: "gemini" | "manual"; apps: AppUsage[] } | null }) {
+  const [phase, setPhase] = useState<Phase>(initialRecord ? "review" : "idle");
+  const [date, setDate] = useState(initialRecord?.date ?? todayISO());
+  const [apps, setApps] = useState<AppUsage[]>(initialRecord?.apps ?? []);
+  const [totalMinutes, setTotalMinutes] = useState(initialRecord?.totalMinutes ?? 0);
   const [screenshotPath, setScreenshotPath] = useState<string | null>(null);
-  const [source, setSource] = useState<"gemini" | "manual">("manual");
+  const [source, setSource] = useState<"gemini" | "manual">(initialRecord?.source ?? "manual");
   const [banner, setBanner] = useState<string | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [warnings, setWarnings] = useState<string[]>([]);
@@ -153,7 +153,7 @@ export default function ScreenTimeCapture() {
   return (
     <div className="space-y-3 rounded-2xl bg-neutral-900 p-4">
       <h2 className="text-sm font-medium text-neutral-400">
-        {source === "gemini" ? "Review extracted data" : "Manual entry"}
+        {initialRecord ? "Edit screen time" : source === "gemini" ? "Review extracted data" : "Manual entry"}
       </h2>
 
       {banner && <p className="rounded-lg bg-amber-950 p-2 text-xs text-amber-300">{banner}</p>}

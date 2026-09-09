@@ -33,3 +33,12 @@ export async function saveReviewNote(input: { date: string; content: string }) {
 
   revalidatePath("/review");
 }
+
+export async function deleteReviewNote(date: string) {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error("Not authenticated");
+  const { error } = await supabase.from("review_notes").delete().eq("user_id", user.id).eq("date", date);
+  if (error) throw error;
+  revalidatePath("/review");
+}

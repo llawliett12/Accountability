@@ -332,6 +332,28 @@ export async function createCheckIn(input: {
   revalidatePath("/");
 }
 
+export async function updateCheckIn(checkInId: string, actualActivity: string) {
+  const title = actualActivity.trim();
+  if (!title) throw new Error("Activity cannot be empty");
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error("Not authenticated");
+  const { error } = await supabase.from("check_ins").update({ actual_activity: title }).eq("id", checkInId).eq("user_id", user.id);
+  if (error) throw error;
+  revalidatePath("/");
+  revalidatePath("/now");
+}
+
+export async function deleteCheckIn(checkInId: string) {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error("Not authenticated");
+  const { error } = await supabase.from("check_ins").delete().eq("id", checkInId).eq("user_id", user.id);
+  if (error) throw error;
+  revalidatePath("/");
+  revalidatePath("/now");
+}
+
 // --- Focus timer: timestamp-based so it survives Android tab backgrounding ---
 
 // clientId lets the offline queue generate the session's id on-device (when

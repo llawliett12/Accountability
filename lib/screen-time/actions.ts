@@ -187,3 +187,16 @@ export async function saveManualEntry(input: {
     source: "manual",
   });
 }
+
+export async function deleteScreenTimeRecord(date: string) {
+  const { supabase, user } = await requireUser();
+  const { data } = await supabase.from("screen_time_records").select("screenshot_path").eq("user_id", user.id).eq("date", date).maybeSingle();
+  const { error } = await supabase.from("screen_time_records").delete().eq("user_id", user.id).eq("date", date);
+  if (error) throw error;
+  if (data?.screenshot_path) await supabase.storage.from("screen-time-screenshots").remove([data.screenshot_path]);
+  revalidatePath("/screen-time");
+  revalidatePath("/screen-time/history");
+  revalidatePath("/insights");
+  revalidatePath("/weekly");
+  revalidatePath("/monthly");
+}

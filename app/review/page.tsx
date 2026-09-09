@@ -12,6 +12,7 @@ import SleepLogForm from "@/components/SleepLogForm";
 import MeditationLogForm from "@/components/MeditationLogForm";
 import ReviewNotesLedger from "@/components/ReviewNotesLedger";
 import FoodHabitLedger from "@/components/FoodHabitLedger";
+import SleepPeriodRows, { type SleepPeriod } from "@/components/SleepPeriodRows";
 
 function formatMinutesToHours(minutes: number | null): string {
   if (minutes === null || minutes <= 0) return "--";
@@ -49,6 +50,7 @@ export default async function ReviewPage() {
     weekDailyScoresRes,
     reviewNoteRes,
     foodHabitsRes,
+    sleepPeriodsRes,
   ] = await Promise.all([
     getOrCreateDailyPlan(today, user.id),
     fetchDailyMetrics(user.id, weekStart, today),
@@ -79,6 +81,12 @@ export default async function ReviewPage() {
       .eq("user_id", user.id)
       .eq("date", today)
       .maybeSingle(),
+    supabase
+      .from("sleep_logs")
+      .select("id, bedtime, wake_time, total_minutes, period_type")
+      .eq("user_id", user.id)
+      .eq("date", today)
+      .order("bedtime", { ascending: false }),
   ]);
 
   // Map of date -> score
@@ -346,6 +354,7 @@ export default async function ReviewPage() {
         <div className="space-y-1.5 pt-2">
           <div className="text-xs font-medium text-neutral-300 font-mono">2. Log Sleep</div>
           <SleepLogForm />
+          <SleepPeriodRows initialPeriods={(sleepPeriodsRes.data ?? []) as SleepPeriod[]} />
         </div>
 
         {/* MEDITATION LOG FORM */}

@@ -16,6 +16,8 @@ export default function GoalDetailControls({
   goalId,
   title,
   priority,
+  description,
+  dueDate,
   status,
   currentValue,
   targetValue,
@@ -26,6 +28,8 @@ export default function GoalDetailControls({
   goalId: string;
   title: string;
   priority: number;
+  description: string | null;
+  dueDate: string | null;
   status: GoalStatus;
   currentValue: number | null;
   targetValue: number | null;
@@ -42,6 +46,8 @@ export default function GoalDetailControls({
   );
   const [titleInput, setTitleInput] = useState(title);
   const [priorityInput, setPriorityInput] = useState(priority);
+  const [descriptionInput, setDescriptionInput] = useState(description ?? "");
+  const [dueDateInput, setDueDateInput] = useState(dueDate ?? "");
   const router = useRouter();
 
   function setStatus(newStatus: GoalStatus) {
@@ -61,7 +67,7 @@ export default function GoalDetailControls({
   function saveDetails() {
     const nextTitle = titleInput.trim();
     if (!nextTitle) return;
-    startTransition(() => updateGoal(goalId, { title: nextTitle, priority: priorityInput }));
+    startTransition(() => updateGoal(goalId, { title: nextTitle, priority: priorityInput, description: descriptionInput.trim() || "", due_date: dueDateInput || null }));
   }
 
   function onDelete() {
@@ -85,6 +91,8 @@ export default function GoalDetailControls({
         <input value={titleInput} onChange={(e) => setTitleInput(e.target.value)} aria-label="Goal title" className="min-h-10 rounded border border-neutral-800 bg-neutral-950 px-2 text-sm text-neutral-100 outline-none focus:border-amber-700" />
         <select value={priorityInput} onChange={(e) => setPriorityInput(Number(e.target.value))} aria-label="Goal importance" className="rounded border border-neutral-800 bg-neutral-950 px-2 text-xs text-neutral-200"><option value={1}>P1</option><option value={2}>P2</option><option value={3}>P3</option><option value={4}>P4</option><option value={5}>P5</option></select>
       </div>
+      <textarea value={descriptionInput} onChange={(e) => setDescriptionInput(e.target.value)} placeholder="Description (optional)" rows={2} className="w-full resize-y rounded border border-neutral-800 bg-neutral-950 px-2 py-2 text-xs text-neutral-100 outline-none focus:border-amber-700" />
+      <label className="flex items-center gap-2 text-xs text-neutral-400">Due date <input type="date" value={dueDateInput} onChange={(e) => setDueDateInput(e.target.value)} className="rounded border border-neutral-800 bg-neutral-950 px-2 py-1 text-neutral-200" /></label>
       <button type="button" disabled={pending || !titleInput.trim()} onClick={saveDetails} className="text-xs text-amber-400 hover:text-amber-300">Save goal details</button>
       <div className="flex flex-wrap gap-1.5">
         {STATUS_OPTIONS.map((opt) => (

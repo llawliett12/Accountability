@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useTransition, useRef } from "react";
-import { updateTaskStatus, deleteTask, toggleTaskTop3, createTask } from "@/lib/actions";
+import { updateTask, updateTaskStatus, deleteTask, toggleTaskTop3, createTask } from "@/lib/actions";
 import { newClientId, runOrQueue } from "@/lib/offline/client";
 import type { Task } from "@/lib/types";
 
@@ -139,6 +139,17 @@ export default function TaskSpreadsheet({
         // Rollback
         setTasks((prev) => [...prev, taskToDelete]);
       }
+    });
+  };
+
+  const handleEditTitle = (task: Task) => {
+    const title = prompt("Edit task", task.title);
+    if (title === null || !title.trim() || title.trim() === task.title) return;
+    const previous = tasks;
+    setTasks((rows) => rows.map((row) => row.id === task.id ? { ...row, title: title.trim() } : row));
+    startTransition(async () => {
+      try { await updateTask(task.id, { title: title.trim() }); }
+      catch { setTasks(previous); }
     });
   };
 
@@ -477,12 +488,7 @@ export default function TaskSpreadsheet({
                   <td className="py-2.5 px-3">
                     <div className="flex items-center gap-2 min-w-0">
                       <span
-                        onClick={() =>
-                          handleStatusChange(
-                            task,
-                            isCompleted ? "not_started" : "completed"
-                          )
-                        }
+                        onDoubleClick={() => handleEditTitle(task)}
                         className={`cursor-pointer break-words transition-colors ${
                           isCompleted
                             ? "line-through text-neutral-500"
@@ -493,6 +499,7 @@ export default function TaskSpreadsheet({
                       >
                         {task.title}
                       </span>
+                      <button type="button" onClick={() => handleEditTitle(task)} className="min-h-9 px-1 text-[10px] text-neutral-600 hover:text-amber-400" aria-label={`Edit ${task.title}`}>Edit</button>
                       {isTemp && (
                         <span className="text-[9px] font-mono text-amber-400/80 border border-amber-800/40 rounded px-1">
                           syncing

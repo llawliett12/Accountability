@@ -8,8 +8,10 @@ import {
   createDeadline,
   updateDeadlineStatus,
   deleteDeadline,
+  updateDeadline,
   createClass,
   deactivateClass,
+  updateClass,
 } from "@/lib/academics/actions";
 import type { ClassWithAttendance } from "@/lib/academics/queries";
 import type {
@@ -173,6 +175,15 @@ function AssessmentsSection({
     startTransition(async () => {
       await deleteAssessment(assessmentId);
     });
+  };
+
+  const handleEditAssessment = (assessment: Assessment) => {
+    const title = prompt("Assessment title", assessment.title);
+    if (title === null || !title.trim()) return;
+    const date = prompt("Date (YYYY-MM-DD)", assessment.date);
+    if (!date) return;
+    setAssessments((prev) => prev.map((item) => item.id === assessment.id ? { ...item, title: title.trim(), date } : item));
+    startTransition(() => updateAssessment(assessment.id, { title: title.trim(), date }));
   };
 
   const handleCreate = (e: React.FormEvent) => {
@@ -405,7 +416,15 @@ function AssessmentsSection({
                   <td className="py-2 px-2 text-center">
                     <button
                       type="button"
-                      onClick={() => handleDelete(a.id)}
+                      onClick={() => handleEditAssessment(a)}
+                      title="Edit assessment"
+                      className="min-h-[44px] min-w-[32px] inline-flex items-center justify-center -m-2 text-neutral-600 hover:text-amber-400 transition-colors"
+                    >
+                      ✎
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => { if (confirm(`Delete ${a.title}?`)) handleDelete(a.id); }}
                       title="Delete assessment"
                       className="h-7 w-7 inline-flex items-center justify-center rounded text-neutral-500 hover:text-red-400 hover:bg-neutral-800 transition-colors"
                     >
@@ -468,6 +487,17 @@ function TimetableSection({
       setLocation("");
       setShowAddClass(false);
     });
+  };
+
+  const editClass = (item: ClassWithAttendance) => {
+    const name = prompt("Class name", item.name);
+    if (name === null || !name.trim()) return;
+    const start = prompt("Start time (HH:MM)", item.start_time.slice(0, 5));
+    const end = start === null ? null : prompt("End time (HH:MM)", item.end_time.slice(0, 5));
+    if (!start || !end) return;
+    const location = prompt("Location (optional)", item.location ?? "");
+    if (location === null) return;
+    startTransition(() => updateClass(item.id, { name: name.trim(), start_time: start.length === 5 ? `${start}:00` : start, end_time: end.length === 5 ? `${end}:00` : end, location: location.trim() || null }));
   };
 
   return (
@@ -576,7 +606,7 @@ function TimetableSection({
               <th className="py-2 px-3 w-32">Time</th>
               <th className="py-2 px-3">Subject / Class</th>
               <th className="py-2 px-3">Location</th>
-              <th className="py-2 px-3 text-right">Attendance / Target</th>
+              <th className="py-2 px-3 text-right">Attendance / Target</th><th className="py-2 px-2"></th>
             </tr>
           </thead>
           <tbody className="divide-y divide-neutral-800/60 font-mono text-xs">
@@ -607,11 +637,12 @@ function TimetableSection({
                     ({c.attendance_target}%)
                   </span>
                 </td>
+                <td className="py-1 px-2 text-right"><button type="button" onClick={() => editClass(c)} className="min-h-9 px-1 text-[10px] text-amber-400">Edit</button></td>
               </tr>
             ))}
             {dayClasses.length === 0 && (
               <tr>
-                <td colSpan={4} className="py-6 text-center text-xs text-neutral-500 font-mono">
+                <td colSpan={5} className="py-6 text-center text-xs text-neutral-500 font-mono">
                   No classes scheduled for {DAYS.find((d) => d.day === selectedDay)?.name}.
                 </td>
               </tr>
@@ -658,6 +689,15 @@ function DeadlinesSection({
     startTransition(async () => {
       await deleteDeadline(deadlineId);
     });
+  };
+
+  const handleEditDeadline = (deadline: Deadline) => {
+    const title = prompt("Deadline title", deadline.title);
+    if (title === null || !title.trim()) return;
+    const due_date = prompt("Due date (YYYY-MM-DD)", deadline.due_date);
+    if (!due_date) return;
+    setDeadlines((prev) => prev.map((item) => item.id === deadline.id ? { ...item, title: title.trim(), due_date } : item));
+    startTransition(() => updateDeadline(deadline.id, { title: title.trim(), due_date }));
   };
 
   const handleCreate = (e: React.FormEvent) => {
@@ -831,9 +871,10 @@ function DeadlinesSection({
                   </td>
 
                   <td className="py-2 px-2 text-center">
+                    <button type="button" onClick={() => handleEditDeadline(d)} title="Edit deadline" className="min-h-[44px] min-w-[28px] inline-flex items-center justify-center -m-2 text-neutral-600 hover:text-amber-400 transition-colors">✎</button>
                     <button
                       type="button"
-                      onClick={() => handleDelete(d.id)}
+                      onClick={() => { if (confirm(`Delete ${d.title}?`)) handleDelete(d.id); }}
                       title="Delete deadline"
                       className="min-h-[44px] min-w-[44px] inline-flex items-center justify-center -m-2 text-neutral-600 hover:text-red-400 transition-colors"
                     >

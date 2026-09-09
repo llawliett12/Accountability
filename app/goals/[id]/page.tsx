@@ -116,6 +116,8 @@ export default async function GoalDetailPage({
           goalId={goal.id}
           title={goal.title}
           priority={goal.priority}
+          description={goal.description}
+          dueDate={goal.due_date}
           status={goal.status}
           currentValue={goal.current_value}
           targetValue={goal.target_value}
