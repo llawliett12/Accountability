@@ -121,6 +121,8 @@ export async function markAttendance(occurrenceId: string, status: AttendanceSta
   revalidatePath("/academics");
   revalidatePath("/academics/calendar");
   revalidatePath(`/academics/classes/${data.class_id}`);
+  revalidatePath("/");
+  revalidatePath("/plan");
 }
 
 export async function markListening(occurrenceId: string, rating: number) {
@@ -285,3 +287,99 @@ export async function updateDeadlineStatus(deadlineId: string, status: DeadlineS
   revalidatePath("/academics");
   revalidatePath("/academics/calendar");
 }
+
+export async function updateAssessment(
+  assessmentId: string,
+  patch: {
+    title?: string;
+    date?: string;
+    score?: number | null;
+    max_score?: number | null;
+    class_id?: string | null;
+    status?: AssessmentStatus;
+  }
+) {
+  const { supabase, user } = await requireUser();
+  const updatePayload: Record<string, unknown> = { ...patch };
+  if (patch.score !== undefined && patch.max_score !== undefined) {
+    if (patch.score !== null && patch.max_score !== null && patch.max_score > 0) {
+      updatePayload.status = "completed";
+    }
+  }
+  const { error } = await supabase
+    .from("assessments")
+    .update(updatePayload)
+    .eq("id", assessmentId)
+    .eq("user_id", user.id);
+  if (error) throw error;
+  revalidatePath("/academics");
+  revalidatePath("/academics/assessments");
+}
+
+export async function deleteAssessment(assessmentId: string) {
+  const { supabase, user } = await requireUser();
+  const { error } = await supabase
+    .from("assessments")
+    .delete()
+    .eq("id", assessmentId)
+    .eq("user_id", user.id);
+  if (error) throw error;
+  revalidatePath("/academics");
+  revalidatePath("/academics/assessments");
+}
+
+export async function updateDeadline(
+  deadlineId: string,
+  patch: {
+    title?: string;
+    due_date?: string;
+    class_id?: string | null;
+    status?: DeadlineStatus;
+  }
+) {
+  const { supabase, user } = await requireUser();
+  const { error } = await supabase
+    .from("deadlines")
+    .update(patch)
+    .eq("id", deadlineId)
+    .eq("user_id", user.id);
+  if (error) throw error;
+  revalidatePath("/academics");
+  revalidatePath("/academics/calendar");
+}
+
+export async function deleteDeadline(deadlineId: string) {
+  const { supabase, user } = await requireUser();
+  const { error } = await supabase
+    .from("deadlines")
+    .delete()
+    .eq("id", deadlineId)
+    .eq("user_id", user.id);
+  if (error) throw error;
+  revalidatePath("/academics");
+  revalidatePath("/academics/calendar");
+}
+
+export async function updateClass(
+  classId: string,
+  patch: {
+    name?: string;
+    subject?: string | null;
+    start_time?: string;
+    end_time?: string;
+    location?: string | null;
+    attendance_target?: number;
+    day_of_week?: number;
+  }
+) {
+  const { supabase, user } = await requireUser();
+  const { error } = await supabase
+    .from("classes")
+    .update(patch)
+    .eq("id", classId)
+    .eq("user_id", user.id);
+  if (error) throw error;
+  revalidatePath("/academics");
+  revalidatePath("/academics/classes");
+}
+

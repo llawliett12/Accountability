@@ -1,6 +1,11 @@
 import { createClient } from "@/lib/supabase/server";
 import Link from "next/link";
-import { todayISO } from "@/lib/date";
+import { shiftDateISO, todayISO } from "@/lib/date";
+import TaskSpreadsheet from "@/components/TaskSpreadsheet";
+import ScheduleTable, { ScheduleItem } from "@/components/ScheduleTable";
+import type { Task } from "@/lib/types";
+import ActivityLedger, { type ActivityEntry } from "@/components/ActivityLedger";
+import StreakGrid from "@/components/StreakGrid";
 
 export default async function MorningDashboard() {
   const supabase = await createClient();
@@ -11,18 +16,22 @@ export default async function MorningDashboard() {
   const date = todayISO();
   const userId = user?.id ?? "";
 
-  // Single-roundtrip parallelized fetching for Home page:
-  // 1. Collapsed daily_plans + tasks join query (eliminates sequential waterfall)
-  // 2. Targeted goals query for active goals & progress (replaces full tree calculation)
-  // 3. Latest discipline verdict
-  // 4. Streaks
-  const [planRes, verdictRes, streaksRes, goalsRes] = await Promise.all([
+  // Parallel fetch: daily plan + tasks, class occurrences, verdict, streaks, goals
+  const gridStart = shiftDateISO(date, -83);
+  const [planRes, classesRes, verdictRes, streaksRes, goalsRes, checkInsRes, gridPlansRes, scoreRes] = await Promise.all([
     supabase
       .from("daily_plans")
-      .select("id, tasks(id, title, status, is_top3, priority)")
+      .select("id, tasks(id, daily_plan_id, user_id, title, category, priority, planned_duration_min, planned_start, planned_end, deadline, notes, status, is_top3, goal_id)")
       .eq("user_id", userId)
       .eq("date", date)
       .maybeSingle(),
+    supabase
+      .from("class_occurrences")
+      .select("id, start_time, date, attendance_status, status, classes(name, location)")
+      .eq("user_id", userId)
+      .eq("date", date)
+      .neq("status", "cancelled")
+      .order("start_time", { ascending: true }),
     supabase
       .from("discipline_verdicts")
       .select("label, explanation")
@@ -36,201 +45,144 @@ export default async function MorningDashboard() {
       .eq("user_id", userId),
     supabase
       .from("goals")
-      .select("id, title, due_date, status, progress")
+      .select("id, title, level")
       .eq("user_id", userId)
-      .not("status", "in", "(completed,abandoned)"),
+      .neq("status", "completed"),
+    supabase.from("check_ins").select("id, actual_activity, drift_state, timestamp").eq("user_id", userId).gte("timestamp", `${date}T00:00:00`).lte("timestamp", `${date}T23:59:59`).order("timestamp", { ascending: false }).limit(5),
+    supabase.from("daily_plans").select("date, tasks(status)").eq("user_id", userId).gte("date", gridStart).lte("date", date).order("date", { ascending: true }),
+    supabase.from("daily_metrics").select("date, discipline_score").eq("user_id", userId).gte("date", gridStart).lte("date", date),
   ]);
 
+  const rawTasks = (planRes.data?.tasks as unknown as Task[]) ?? [];
+  const tasks = [...rawTasks].sort((a, b) => {
+    if (a.is_top3 && !b.is_top3) return -1;
+    if (!a.is_top3 && b.is_top3) return 1;
+    return (a.priority ?? 3) - (b.priority ?? 3);
+  });
+
+  const totalTasks = tasks.length;
+  const completedTasks = tasks.filter((t) => t.status === "completed").length;
+  const pct = totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0;
+
+  // Next class occurrence
+  const todayClasses = classesRes.data ?? [];
+  let nextItem: string | null = null;
+  if (todayClasses.length > 0) {
+    const first = todayClasses[0];
+    const className = (first.classes as unknown as { name?: string })?.name ?? "Class";
+    const startTime = first.start_time ? first.start_time.slice(0, 5) : "";
+    nextItem = startTime ? `${startTime} ${className}` : className;
+  }
+
+  // Schedule items for ScheduleTable
+  const scheduleItems: ScheduleItem[] = todayClasses.map((c) => {
+    const classInfo = c.classes as unknown as { name?: string; location?: string } | null;
+    return {
+      id: c.id,
+      type: "class",
+      title: classInfo?.name ?? "Class",
+      subtitle: classInfo?.location ?? undefined,
+      start_time: c.start_time,
+      end_time: null,
+      attendance_status: c.attendance_status as ScheduleItem["attendance_status"],
+    };
+  });
+
+  // Highest streak
+  const maxStreak = (streaksRes.data ?? []).reduce(
+    (max, s) => Math.max(max, s.current_count),
+    0
+  );
+
   const verdict = verdictRes.data;
-  const streaks = streaksRes.data;
+  const goals = goalsRes.data ?? [];
+  const scoreByDate = new Map((scoreRes.data ?? []).map((row) => [row.date, row.discipline_score as number | null]));
+  const gridDays = (gridPlansRes.data ?? []).map((plan) => {
+    const planTasks = (plan.tasks ?? []) as { status: string }[];
+    return { date: plan.date, planned: planTasks.length, completed: planTasks.filter((task) => task.status === "completed").length, score: scoreByDate.get(plan.date) ?? null };
+  });
+  const currentStreak = (streaksRes.data ?? []).reduce((max, streak) => Math.max(max, streak.current_count), 0);
 
-  // Extract tasks from joined query and sort by priority in memory
-  const rawTasks =
-    (planRes.data?.tasks as
-      | { id: string; title: string; status: string; is_top3: boolean; priority: number }[]
-      | undefined) ?? [];
-  const tasks = [...rawTasks].sort((a, b) => (a.priority ?? 3) - (b.priority ?? 3));
-  const top3 = tasks.filter((t) => t.is_top3);
-
-  // Compute goals summary directly from targeted query
-  const activeGoals = goalsRes.data ?? [];
-  const overdueGoals = activeGoals.filter((g) => g.due_date && g.due_date < date);
-  const nearestGoal = activeGoals
-    .filter((g) => !g.due_date || g.due_date >= date)
-    .sort((a, b) => (a.due_date ?? "9999-99-99").localeCompare(b.due_date ?? "9999-99-99"))[0];
+  // Localized date string
+  const formattedDate = new Date().toLocaleDateString("en-US", {
+    weekday: "long",
+    month: "short",
+    day: "numeric",
+    timeZone: "Asia/Kolkata",
+  });
 
   return (
-    <div className="space-y-4">
-      {/* Mobile-first Header */}
-      <header className="flex items-center justify-between">
+    <div className="space-y-5 pb-6">
+      {/* HEADER SECTION */}
+      <header className="flex items-center justify-between pt-1 border-b border-neutral-800/80 pb-3">
         <div>
-          <p className="text-xs text-neutral-400">
-            {new Date().toLocaleDateString(undefined, {
-              weekday: "long",
-              month: "short",
-              day: "numeric",
-            })}
-          </p>
-          <h1 className="text-2xl font-semibold text-white">Good morning</h1>
+          <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-white">
+            Daily Command Ledger
+          </h1>
+          <p className="font-mono text-xs text-neutral-400 capitalize">{formattedDate}</p>
         </div>
-        <Link
-          href="/settings"
-          className="flex items-center gap-1.5 rounded-xl bg-neutral-900 px-3 py-2 text-xs font-medium text-neutral-300 hover:bg-neutral-800 transition"
-          aria-label="Settings"
-        >
-          <span>⚙</span>
-          <span>Settings</span>
-        </Link>
-      </header>
-
-      {/* Quick Navigation Pills */}
-      <nav className="flex items-center gap-2 overflow-x-auto pb-1 text-xs">
-        <Link
-          href="/weekly"
-          className="whitespace-nowrap rounded-xl bg-neutral-900 px-3 py-2 text-neutral-300 hover:bg-neutral-800 transition"
-        >
-          Weekly
-        </Link>
-        <Link
-          href="/monthly"
-          className="whitespace-nowrap rounded-xl bg-neutral-900 px-3 py-2 text-neutral-300 hover:bg-neutral-800 transition"
-        >
-          Monthly
-        </Link>
-        <Link
-          href="/screen-time"
-          className="whitespace-nowrap rounded-xl bg-neutral-900 px-3 py-2 text-neutral-300 hover:bg-neutral-800 transition"
-        >
-          Screen time
-        </Link>
-        <Link
-          href="/insights"
-          className="whitespace-nowrap rounded-xl bg-neutral-900 px-3 py-2 text-neutral-300 hover:bg-neutral-800 transition"
-        >
-          Insights
-        </Link>
-      </nav>
-
-      {/* Top 3 Card */}
-      <section className="rounded-2xl bg-neutral-900 p-4">
-        <div className="mb-2 flex items-center justify-between">
-          <h2 className="text-sm font-medium text-neutral-400">Top 3 today</h2>
-          {top3.length > 0 && (
-            <Link href="/plan" className="text-xs text-neutral-500 underline">
-              Edit
-            </Link>
-          )}
-        </div>
-        {top3.length === 0 ? (
-          <div className="flex items-center justify-between py-1">
-            <span className="text-sm text-neutral-500">No Top 3 set yet.</span>
-            <Link
-              href="/plan"
-              className="rounded-lg bg-neutral-800 px-3 py-1.5 text-xs font-medium text-white hover:bg-neutral-700 transition"
-            >
-              Plan today →
-            </Link>
-          </div>
-        ) : (
-          <ul className="space-y-1.5">
-            {top3.map((t) => (
-              <li key={t.id} className="flex items-center justify-between text-sm">
-                <span className="min-w-0 truncate pr-2">★ {t.title}</span>
-                <span className="shrink-0 rounded bg-neutral-800 px-2 py-0.5 text-xs text-neutral-400">
-                  {t.status.replace("_", " ")}
-                </span>
-              </li>
-            ))}
-          </ul>
-        )}
-      </section>
-
-      {/* Latest Discipline Verdict Card */}
-      <section className="rounded-2xl bg-neutral-900 p-4">
-        <h2 className="mb-2 text-sm font-medium text-neutral-400">
-          Latest discipline verdict
-        </h2>
-        {verdict ? (
-          <div>
-            <p className="text-lg font-semibold">{verdict.label}</p>
-            <p className="text-sm text-neutral-400">{verdict.explanation}</p>
-          </div>
-        ) : (
-          <div className="flex items-center justify-between py-1">
-            <span className="text-sm text-neutral-500">No score computed yet.</span>
-            <Link
-              href="/night"
-              className="rounded-lg bg-neutral-800 px-3 py-1.5 text-xs font-medium text-white hover:bg-neutral-700 transition"
-            >
-              Review tonight →
-            </Link>
-          </div>
-        )}
-      </section>
-
-      {/* Goals Card */}
-      <section className="rounded-2xl bg-neutral-900 p-4">
-        <div className="mb-2 flex items-center justify-between">
-          <h2 className="text-sm font-medium text-neutral-400">Goals</h2>
-          <Link href="/goals" className="text-xs text-neutral-500 underline">
-            View all
+        <div className="flex items-center gap-2">
+          <Link
+            href="/plan"
+            className="text-xs font-mono font-medium text-amber-400 hover:text-amber-300 transition-colors"
+          >
+            Full Plan →
+          </Link>
+          <Link
+            href="/settings"
+            className="min-h-[38px] min-w-[38px] flex items-center justify-center rounded-lg bg-neutral-900 border border-neutral-800 text-neutral-400 hover:text-white transition"
+            aria-label="Settings"
+          >
+            ⚙
           </Link>
         </div>
-        {activeGoals.length === 0 ? (
-          <div className="flex items-center justify-between py-1">
-            <span className="text-sm text-neutral-500">No active goals.</span>
-            <Link
-              href="/goals"
-              className="rounded-lg bg-neutral-800 px-3 py-1.5 text-xs font-medium text-white hover:bg-neutral-700 transition"
-            >
-              Create goal →
-            </Link>
+      </header>
+
+      {/* TODAY'S OVERVIEW */}
+      <section className="overview-ledger">
+        <div className="grid grid-cols-2 sm:grid-cols-4 divide-x divide-y sm:divide-y-0 divide-neutral-800/80 font-mono text-xs">
+          <div className="p-3">
+            <span className="text-[10px] uppercase text-neutral-500 block">Today&apos;s Tasks</span>
+            <span className="text-base font-bold text-neutral-100">
+              {completedTasks}/{totalTasks}
+            </span>
+            <span className="text-[10px] text-neutral-400 ml-1.5 font-mono">({pct}%)</span>
           </div>
-        ) : (
-          <div className="space-y-1.5 text-sm">
-            {overdueGoals.length > 0 && (
-              <p className="text-xs text-red-400">
-                {overdueGoals.length} goal{overdueGoals.length === 1 ? "" : "s"} overdue
-              </p>
-            )}
-            {nearestGoal && (
-              <div className="flex items-center justify-between">
-                <span className="min-w-0 truncate text-neutral-400 pr-2">
-                  Next up: {nearestGoal.title}
-                </span>
-                <span className="shrink-0 font-medium">{nearestGoal.progress}%</span>
-              </div>
-            )}
+          <div className="p-3">
+            <span className="text-[10px] uppercase text-neutral-500 block">Streak</span>
+            <span className="text-base font-bold text-emerald-400">🔥 {maxStreak}d</span>
           </div>
-        )}
+          <div className="p-3">
+            <span className="text-[10px] uppercase text-neutral-500 block">Next Up</span>
+            <span className="text-xs font-medium text-amber-300 truncate block pt-0.5">
+              {nextItem ?? "None scheduled"}
+            </span>
+          </div>
+          <div className="p-3">
+            <span className="text-[10px] uppercase text-neutral-500 block">Discipline</span>
+            <span className="text-xs text-neutral-300 truncate block pt-0.5">
+              {verdict?.label ?? "Tracking Active"}
+            </span>
+          </div>
+        </div>
       </section>
 
-      {/* Streaks Card */}
-      <section className="rounded-2xl bg-neutral-900 p-4">
-        <h2 className="mb-2 text-sm font-medium text-neutral-400">Streaks</h2>
-        {(streaks ?? []).length === 0 ? (
-          <p className="text-sm text-neutral-500">No streaks tracked yet.</p>
-        ) : (
-          <ul className="grid grid-cols-2 gap-2 text-sm">
-            {streaks!.map((s) => (
-              <li key={s.streak_type} className="flex justify-between rounded-xl bg-neutral-800/60 px-3 py-2">
-                <span className="capitalize text-neutral-400">
-                  {s.streak_type.replace("_", " ")}
-                </span>
-                <span className="font-semibold text-white">{s.current_count}d</span>
-              </li>
-            ))}
-          </ul>
-        )}
+      {/* INTERACTIVE TASKS SPREADSHEET (Checkboxes & Stars work directly on Home) */}
+      <section className="space-y-1">
+        <TaskSpreadsheet
+          initialTasks={tasks}
+          goals={goals}
+          selectedDate={date}
+          isHomeView={true}
+        />
       </section>
 
-      {/* Primary CTA */}
-      <Link
-        href="/now"
-        className="block rounded-2xl bg-white py-3.5 text-center font-medium text-neutral-950 shadow-sm active:scale-[0.99] transition"
-      >
-        What am I doing right now?
-      </Link>
+      <StreakGrid days={gridDays} currentStreak={currentStreak} longestStreak={maxStreak} />
+
+      <ActivityLedger initialEntries={(checkInsRes.data ?? []) as ActivityEntry[]} />
+
+      {/* TODAY'S SCHEDULE & ATTENDANCE TABLE */}
+      <section className="space-y-1 pt-2"><ScheduleTable items={scheduleItems} selectedDate={date} isHomeView={true} /></section>
     </div>
   );
 }

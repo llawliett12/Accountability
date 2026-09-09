@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { getLocalDateISO, todayISO } from "./date";
+import { getLocalDateISO, todayISO, shiftDateISO, formatDateDisplay } from "./date";
 
 describe("lib/date local date utility", () => {
   it("correctly maps IST early morning across UTC day boundary", () => {
@@ -22,5 +22,17 @@ describe("lib/date local date utility", () => {
 
   it("returns a valid YYYY-MM-DD string for todayISO()", () => {
     expect(todayISO()).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+  });
+
+  it("shifts date forwards and backwards correctly with shiftDateISO", () => {
+    expect(shiftDateISO("2026-09-09", 1)).toBe("2026-09-10");
+    expect(shiftDateISO("2026-09-09", -1)).toBe("2026-09-08");
+    expect(shiftDateISO("2026-02-28", 1)).toBe("2026-03-01");
+    expect(shiftDateISO("2026-01-01", -1)).toBe("2025-12-31");
+  });
+
+  it("formats dates cleanly with formatDateDisplay", () => {
+    expect(formatDateDisplay("2026-09-09")).toBe("Wed, Sep 9");
+    expect(formatDateDisplay("2026-01-01")).toBe("Thu, Jan 1");
   });
 });

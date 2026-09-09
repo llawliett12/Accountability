@@ -59,6 +59,8 @@ export async function createTask(input: {
   notes?: string;
   is_top3?: boolean;
   goal_id?: string;
+  daily_plan_id?: string;
+  date?: string;
 }) {
   const supabase = await createClient();
   const {
@@ -66,7 +68,9 @@ export async function createTask(input: {
   } = await supabase.auth.getUser();
   if (!user) throw new Error("Not authenticated");
 
-  const dailyPlanId = await getOrCreateDailyPlan();
+  const dailyPlanId =
+    input.daily_plan_id ??
+    (await getOrCreateDailyPlan(input.date ?? todayISO(), user.id));
 
   const { data: created, error } = await supabase
     .from("tasks")
@@ -174,6 +178,86 @@ export async function updateTaskStatus(taskId: string, status: string, clientId?
   revalidatePath("/plan");
   revalidatePath("/");
   return { success: true, taskId, status };
+}
+
+export async function updateTask(
+  taskId: string,
+  patch: {
+    title?: string;
+    is_top3?: boolean;
+    planned_duration_min?: number | null;
+    planned_start?: string | null;
+    planned_end?: string | null;
+    priority?: number;
+    goal_id?: string | null;
+    status?: string;
+  }
+) {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) throw new Error("Not authenticated");
+
+  const { data: updated, error } = await supabase
+    .from("tasks")
+    .update({
+      ...patch,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", taskId)
+    .eq("user_id", user.id)
+    .select("goal_id")
+    .single();
+
+  if (error) throw error;
+
+  if (patch.goal_id !== undefined || updated?.goal_id) {
+    try {
+      await recomputeAndStoreProgress(user.id);
+    } catch (goalErr) {
+      console.warn("Non-fatal: recomputeAndStoreProgress failed:", goalErr);
+    }
+  }
+
+  revalidatePath("/plan");
+  revalidatePath("/");
+  return updated;
+}
+
+export async function deleteTask(taskId: string) {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) throw new Error("Not authenticated");
+
+  const { data: task } = await supabase
+    .from("tasks")
+    .select("goal_id")
+    .eq("id", taskId)
+    .eq("user_id", user.id)
+    .maybeSingle();
+
+  const { error } = await supabase
+    .from("tasks")
+    .delete()
+    .eq("id", taskId)
+    .eq("user_id", user.id);
+
+  if (error) throw error;
+
+  if (task?.goal_id) {
+    try {
+      await recomputeAndStoreProgress(user.id);
+    } catch (goalErr) {
+      console.warn("Non-fatal: recomputeAndStoreProgress failed:", goalErr);
+    }
+  }
+
+  revalidatePath("/plan");
+  revalidatePath("/");
+  return { success: true, taskId };
 }
 
 // Reconciliation: never silently assumes failure. Explicitly records the
@@ -602,3 +686,75 @@ async function bumpStreak(
     { onConflict: "user_id,streak_type" }
   );
 }
+
+export async function toggleTaskTop3(taskId: string, is_top3: boolean) {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) throw new Error("Not authenticated");
+
+  const { data: updated, error } = await supabase
+    .from("tasks")
+    .update({
+      is_top3,
+      priority: is_top3 ? 1 : 3,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", taskId)
+    .eq("user_id", user.id)
+    .select("*")
+    .single();
+
+  if (error) throw error;
+
+  revalidatePath("/plan");
+  revalidatePath("/");
+  return updated;
+}
+
+export async function rolloverUnfinishedTasks(fromDate: string, toDate: string = todayISO()) {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) throw new Error("Not authenticated");
+
+  const { data: fromPlan } = await supabase
+    .from("daily_plans")
+    .select("id")
+    .eq("user_id", user.id)
+    .eq("date", fromDate)
+    .maybeSingle();
+
+  if (!fromPlan) return { count: 0 };
+
+  const { data: unfinished, error: fetchErr } = await supabase
+    .from("tasks")
+    .select("id")
+    .eq("user_id", user.id)
+    .eq("daily_plan_id", fromPlan.id)
+    .in("status", ["not_started", "in_progress", "partial"]);
+
+  if (fetchErr) throw fetchErr;
+  if (!unfinished || unfinished.length === 0) return { count: 0 };
+
+  const targetPlanId = await getOrCreateDailyPlan(toDate, user.id);
+  const taskIds = unfinished.map((t) => t.id);
+
+  const { error: updateErr } = await supabase
+    .from("tasks")
+    .update({
+      daily_plan_id: targetPlanId,
+      updated_at: new Date().toISOString(),
+    })
+    .in("id", taskIds)
+    .eq("user_id", user.id);
+
+  if (updateErr) throw updateErr;
+
+  revalidatePath("/plan");
+  revalidatePath("/");
+  return { count: taskIds.length };
+}
+

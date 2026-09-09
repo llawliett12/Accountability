@@ -33,36 +33,33 @@ export default function CheckInForm() {
   }
 
   return (
-    <div className="rounded-2xl bg-neutral-900 p-3">
-      <h2 className="mb-2 text-sm font-medium text-neutral-400">
-        What am I doing right now?
-      </h2>
-      <input
+    <section className="space-y-2">
+      <div className="ledger-heading"><div><h2>What I&apos;m doing right now</h2><p>Record a quick check-in without leaving the flow.</p></div></div>
+      <div className="ledger-scroll"><table className="ledger-table min-w-[440px]"><thead><tr><th className="w-12">S.No</th><th>Activity</th><th className="w-48">State</th></tr></thead><tbody><tr className="ledger-add-row"><td className="text-center text-amber-400">+</td><td><input
         value={activity}
         onChange={(e) => setActivity(e.target.value)}
         placeholder="e.g. reading DBMS notes"
-        className="mb-2 w-full rounded-lg bg-neutral-800 px-3 py-2 text-sm outline-none"
-      />
-      <div className="flex gap-2">
+        onKeyDown={(event) => { if (event.key === "Enter") log("on_track"); }}
+      /></td><td className="whitespace-nowrap">
         <button
           disabled={pending}
           onClick={() => log("on_track")}
-          className="flex-1 rounded-lg bg-emerald-600 py-2 text-sm font-medium"
+          className="state-action state-good"
         >
           On track
         </button>
         <button
           disabled={pending}
           onClick={() => log("drifting")}
-          className="flex-1 rounded-lg bg-red-600 py-2 text-sm font-medium"
+          className="state-action state-warn"
         >
           Drifting
         </button>
-      </div>
+      </td></tr></tbody></table></div>
       {lastLogged && (
         <p className="mt-2 text-xs text-neutral-500">Logged: {lastLogged}</p>
       )}
       {error && <p className="mt-2 text-xs text-red-400">{error}</p>}
-    </div>
+    </section>
   );
 }

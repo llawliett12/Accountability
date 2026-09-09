@@ -64,37 +64,24 @@ export default function GoalQuickAdd({
   }
 
   return (
-    <div className="space-y-2 rounded-2xl bg-neutral-900 p-3">
-      <input
+    <section className="space-y-2">
+      <div className="ledger-heading">
+        <div><h2>Add goal</h2><p>Create a row directly in the hierarchy.</p></div>
+        <span className="ledger-count">Enter to save</span>
+      </div>
+      <form className="ledger-scroll" onSubmit={(event) => { event.preventDefault(); submit(); }}>
+        <table className="ledger-table min-w-[600px]">
+          <thead><tr><th className="w-10">+</th><th>Goal</th><th className="w-24">Level</th><th className="w-36">Parent</th><th className="w-32">Target</th><th className="w-36">Importance</th><th className="w-20"></th></tr></thead>
+          <tbody><tr className="ledger-add-row"><td className="text-center text-amber-400">+</td><td><input
         value={title}
         onChange={(e) => setTitle(e.target.value)}
         placeholder="New goal title..."
-        className="w-full rounded-lg bg-neutral-800 px-3 py-2 text-sm outline-none"
-      />
-
-      <div className="flex flex-wrap gap-1.5">
-        {LEVELS.map((l) => (
-          <button
-            key={l.value}
-            type="button"
-            onClick={() => {
-              setLevel(l.value);
-              setParentId("");
-            }}
-            className={`rounded-lg px-2.5 py-1 text-xs ${
-              level === l.value ? "bg-white text-neutral-950" : "bg-neutral-800 text-neutral-400"
-            }`}
-          >
-            {l.label}
-          </button>
-        ))}
-      </div>
-
-      {expectedParentLevel && (
-        <select
+      /></td><td><select value={level} onChange={(e) => { setLevel(e.target.value as GoalLevel); setParentId(""); }} className="w-full bg-transparent text-xs text-neutral-200 outline-none">
+        {LEVELS.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
+      </select></td><td>{expectedParentLevel ? <select
           value={parentId}
           onChange={(e) => setParentId(e.target.value)}
-          className="w-full rounded-lg bg-neutral-800 px-2 py-1.5 text-xs text-neutral-200 outline-none"
+          className="w-full bg-transparent text-xs text-neutral-200 outline-none"
         >
           <option value="">No parent {expectedParentLevel} goal</option>
           {parentOptions.map((g) => (
@@ -102,43 +89,36 @@ export default function GoalQuickAdd({
               {g.title}
             </option>
           ))}
-        </select>
-      )}
-
-      <div className="flex gap-2">
-        <input
+        </select> : <span className="text-neutral-600">—</span>}</td><td><input
           type="date"
           value={dueDate}
           onChange={(e) => setDueDate(e.target.value)}
-          className="flex-1 rounded-lg bg-neutral-800 px-2 py-1.5 text-xs text-neutral-200 outline-none"
-        />
-        <div className="flex gap-1">
+          className="w-full bg-transparent text-xs text-neutral-300 outline-none"
+        /></td><td><div className="flex gap-0.5">
           {[1, 2, 3, 4, 5].map((p) => (
             <button
               key={p}
               type="button"
               onClick={() => setPriority(p)}
-              className={`h-7 w-7 rounded-lg text-xs ${
-                priority === p ? "bg-amber-500 text-black" : "bg-neutral-800 text-neutral-400"
+              className={`h-7 w-6 text-xs ${
+                priority === p ? "bg-amber-400 text-neutral-950" : "text-neutral-500 hover:text-amber-300"
               }`}
               title={`Priority ${p}`}
             >
               {p}
             </button>
           ))}
-        </div>
-      </div>
-
-      {error && <p className="text-xs text-red-400">{error}</p>}
-
-      <button
+        </div></td><td><button
         type="button"
-        onClick={submit}
+        onClick={() => submit()}
         disabled={pending || !title.trim()}
-        className="w-full rounded-lg bg-white py-2 text-sm font-medium text-neutral-950 disabled:opacity-50"
+        className="state-action state-good whitespace-nowrap"
       >
-        Add goal
-      </button>
-    </div>
+        {pending ? "Saving" : "Add"}
+      </button></td></tr></tbody>
+        </table>
+      </form>
+      {error && <p className="text-xs text-red-400">{error}</p>}
+    </section>
   );
 }

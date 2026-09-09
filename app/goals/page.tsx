@@ -2,7 +2,7 @@ import { createClient } from "@/lib/supabase/server";
 import Link from "next/link";
 import { fetchGoalsWithProgress, goalsAtLevel } from "@/lib/goals/queries";
 import { todayISO } from "@/lib/date";
-import GoalCard from "@/components/GoalCard";
+import GoalsTable from "@/components/GoalsTable";
 import GoalQuickAdd from "@/components/GoalQuickAdd";
 
 function isActive(status: string) {
@@ -30,7 +30,7 @@ export default async function GoalsPage() {
     .sort((a, b) => b.updated_at.localeCompare(a.updated_at))
     .slice(0, 5);
 
-  // Today's linked goals: goals whose linked tasks include a task in today's plan.
+  // Today's linked goals
   const { data: todayPlan } = await supabase
     .from("daily_plans")
     .select("id")
@@ -52,84 +52,59 @@ export default async function GoalsPage() {
   const parentOptions = goals.map((g) => ({ id: g.id, title: g.title, level: g.level }));
 
   return (
-    <div className="space-y-5">
-      <h1 className="text-2xl font-semibold">Goals</h1>
+    <div className="space-y-6 pb-6">
+      <header className="border-b border-neutral-800/80 pb-3">
+        <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-white">Goals Ledger</h1>
+        <p className="font-mono text-xs text-neutral-400">Strategic hierarchy &amp; progress tracker</p>
+      </header>
 
+      {/* QUICK ADD ROW */}
       <GoalQuickAdd goals={parentOptions} />
 
+      {/* OVERDUE GOALS */}
       {overdue.length > 0 && (
-        <section className="space-y-2">
-          <h2 className="text-sm font-medium text-red-400">Overdue ({overdue.length})</h2>
-          <div className="space-y-2">
-            {overdue.map((g) => (
-              <GoalCard key={g.id} goal={g} />
-            ))}
-          </div>
-        </section>
+        <GoalsTable goals={overdue} title="Overdue Goals" />
       )}
 
+      {/* TODAY'S LINKED GOALS */}
       {todayGoals.length > 0 && (
-        <section className="space-y-2">
-          <h2 className="text-sm font-medium text-neutral-400">Today&apos;s linked goals</h2>
-          <div className="space-y-2">
-            {todayGoals.map((g) => (
-              <GoalCard key={g.id} goal={g} />
-            ))}
-          </div>
-        </section>
+        <GoalsTable goals={todayGoals} title="Today's Linked Goals" />
       )}
 
+      {/* HIERARCHY LEVELS */}
       {(["year", "quarter", "month", "week"] as const).map((level) => {
         const levelGoals = goalsAtLevel(active, level);
         if (levelGoals.length === 0) return null;
         return (
-          <section key={level} className="space-y-2">
-            <h2 className="text-sm font-medium text-neutral-400 capitalize">
-              {level} goals
-            </h2>
-            <div className="space-y-2">
-              {levelGoals.map((g) => (
-                <GoalCard key={g.id} goal={g} />
-              ))}
-            </div>
-          </section>
+          <GoalsTable
+            key={level}
+            goals={levelGoals}
+            title={`${level} Goals`}
+          />
         );
       })}
 
+      {/* UPCOMING */}
       {upcoming.length > 0 && (
-        <section className="space-y-2">
-          <h2 className="text-sm font-medium text-neutral-400">Upcoming</h2>
-          <div className="space-y-2">
-            {upcoming.map((g) => (
-              <GoalCard key={g.id} goal={g} />
-            ))}
-          </div>
-        </section>
+        <GoalsTable goals={upcoming} title="Upcoming Goals" />
       )}
 
+      {/* RECENTLY COMPLETED */}
       {recentlyCompleted.length > 0 && (
-        <section className="space-y-2">
-          <h2 className="text-sm font-medium text-neutral-400">Recently completed</h2>
-          <div className="space-y-2">
-            {recentlyCompleted.map((g) => (
-              <GoalCard key={g.id} goal={g} />
-            ))}
-          </div>
-        </section>
+        <GoalsTable goals={recentlyCompleted} title="Recently Completed" />
       )}
 
       {goals.length === 0 && (
-        <div className="rounded-xl border border-neutral-800 bg-neutral-900/40 p-5 text-center">
-          <p className="text-sm font-medium text-neutral-300">No goals set yet</p>
-          <p className="mt-1 text-xs text-neutral-500">
-            Use the form above to add a Year or Quarter goal to start your hierarchy, then break it down into milestones.
-          </p>
+        <div className="border border-neutral-800 bg-neutral-950/40 p-6 text-center rounded-lg font-mono text-xs text-neutral-500">
+          No goals recorded yet. Add a Year or Quarter goal above to establish your hierarchy.
         </div>
       )}
 
-      <Link href="/plan" className="block text-center text-xs text-neutral-500 underline">
-        Back to today&apos;s plan
-      </Link>
+      <div className="pt-2 text-center">
+        <Link href="/plan" className="text-xs font-mono text-amber-400 hover:text-amber-300">
+          ← Back to today&apos;s plan
+        </Link>
+      </div>
     </div>
   );
 }

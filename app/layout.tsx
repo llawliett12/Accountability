@@ -36,11 +36,11 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
-      <body className="min-h-screen bg-neutral-950 pb-24 text-neutral-100 antialiased">
+      <body className="min-h-screen bg-[#0b0d10] pb-24 text-neutral-100 antialiased">
         <ServiceWorkerRegister />
         <OfflineSyncProvider>
           <OfflineBanner />
-          <main className="mx-auto max-w-md px-4 py-4">{children}</main>
+          <main className="ledger-shell mx-auto max-w-md px-4 py-4">{children}</main>
         </OfflineSyncProvider>
         <BottomNav />
       </body>

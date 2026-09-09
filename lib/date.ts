@@ -46,3 +46,28 @@ export function getLocalDateISO(date: Date = new Date(), timeZone: string = DEFA
 export function todayISO(timeZone?: string): string {
   return getLocalDateISO(new Date(), timeZone);
 }
+
+/**
+ * Shifts a YYYY-MM-DD string by a given number of days.
+ */
+export function shiftDateISO(dateISO: string, days: number): string {
+  const [y, m, d] = dateISO.split("-").map(Number);
+  const dt = new Date(Date.UTC(y, m - 1, d));
+  dt.setUTCDate(dt.getUTCDate() + days);
+  return dt.toISOString().slice(0, 10);
+}
+
+/**
+ * Formats a YYYY-MM-DD string into a readable label (e.g. "Wed, Sep 9").
+ */
+export function formatDateDisplay(dateISO: string): string {
+  const [y, m, d] = dateISO.split("-").map(Number);
+  const dt = new Date(Date.UTC(y, m - 1, d));
+  return dt.toLocaleDateString("en-US", {
+    timeZone: "UTC",
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+  });
+}
+

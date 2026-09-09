@@ -23,7 +23,7 @@ export default function GoalCard({ goal }: { goal: GoalCardData }) {
   return (
     <Link
       href={`/goals/${goal.id}`}
-      className="block rounded-2xl bg-neutral-900 p-3"
+      className="block rounded-xl bg-neutral-900 border border-neutral-800/80 p-3.5 hover:border-neutral-700/80 transition-colors"
     >
       <div className="flex items-center justify-between gap-2">
         <div className="flex min-w-0 items-center gap-2">
