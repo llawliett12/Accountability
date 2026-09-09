@@ -51,6 +51,7 @@ export default async function ReviewPage() {
     foodHabitsRes,
     sleepPeriodsRes,
     completedActivitiesRes,
+    meditationRes,
   ] = await Promise.all([
     getOrCreateDailyPlan(today, user.id),
     fetchDailyMetrics(user.id, weekStart, today),
@@ -83,6 +84,12 @@ export default async function ReviewPage() {
       .gte("timestamp", `${today}T00:00:00+05:30`)
       .lt("timestamp", `${tomorrow}T00:00:00+05:30`)
       .order("timestamp", { ascending: true }),
+    supabase
+      .from("meditation_logs")
+      .select("happened, duration_min")
+      .eq("user_id", user.id)
+      .eq("date", today)
+      .maybeSingle(),
   ]);
 
   // Map of date -> score
@@ -357,7 +364,7 @@ export default async function ReviewPage() {
         {/* MEDITATION LOG FORM */}
         <div className="space-y-1.5 pt-2">
           <div className="text-xs font-medium text-neutral-300 font-mono">3. Log Meditation &amp; Habits</div>
-          <MeditationLogForm />
+          <MeditationLogForm date={today} initialHappened={meditationRes.data?.happened ?? null} initialDuration={meditationRes.data?.duration_min ?? null} />
         </div>
 
         <div className="space-y-1.5 pt-2">

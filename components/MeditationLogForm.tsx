@@ -3,20 +3,43 @@
 import { useState, useTransition } from "react";
 import { logMeditation } from "@/lib/health/actions";
 
-export default function MeditationLogForm() {
-  const [happened, setHappened] = useState<boolean | null>(null);
-  const [duration, setDuration] = useState("");
+export default function MeditationLogForm({
+  date,
+  initialHappened,
+  initialDuration,
+}: {
+  date: string;
+  initialHappened: boolean | null;
+  initialDuration: number | null;
+}) {
+  const [happened, setHappened] = useState<boolean | null>(initialHappened);
+  const [duration, setDuration] = useState(initialDuration?.toString() ?? "");
   const [pending, startTransition] = useTransition();
   const [saved, setSaved] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   function submit(didIt: boolean) {
+    if (pending) return;
+    const previousHappened = happened;
+    const previousDuration = duration;
     setHappened(didIt);
+    setSaved(false);
+    setError(null);
     startTransition(async () => {
-      await logMeditation({
-        happened: didIt,
-        duration_min: didIt && duration ? Number(duration) : undefined,
-      });
-      setSaved(true);
+      try {
+        const savedLog = await logMeditation({
+          date,
+          happened: didIt,
+          duration_min: didIt && duration ? Number(duration) : undefined,
+        });
+        setHappened(savedLog.happened);
+        setDuration(savedLog.duration_min?.toString() ?? "");
+        setSaved(true);
+      } catch {
+        setHappened(previousHappened);
+        setDuration(previousDuration);
+        setError("Could not save meditation status. Please try again.");
+      }
     });
   }
 
@@ -31,7 +54,7 @@ export default function MeditationLogForm() {
             happened === true ? "bg-emerald-600" : "bg-neutral-800"
           }`}
         >
-          Did it
+          Did
         </button>
         <button
           onClick={() => submit(false)}
@@ -40,7 +63,7 @@ export default function MeditationLogForm() {
             happened === false ? "bg-red-600" : "bg-neutral-800"
           }`}
         >
-          Skipped
+          Not Did
         </button>
       </div>
       {happened === true && (
@@ -54,6 +77,7 @@ export default function MeditationLogForm() {
         />
       )}
       {saved && <p className="mt-2 text-xs text-neutral-500">Saved ✓</p>}
+      {error && <p className="mt-2 text-xs text-red-400">{error}</p>}
     </div>
   );
 }

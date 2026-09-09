@@ -85,10 +85,11 @@ export async function logMeditation(input: {
   } = await supabase.auth.getUser();
   if (!user) throw new Error("Not authenticated");
 
-  const { error } = await supabase.from("meditation_logs").upsert(
+  const date = input.date ?? todayISO();
+  const { data, error } = await supabase.from("meditation_logs").upsert(
     {
       user_id: user.id,
-      date: input.date ?? todayISO(),
+      date,
       happened: input.happened,
       duration_min: input.duration_min ?? null,
       type: input.type ?? null,
@@ -96,12 +97,15 @@ export async function logMeditation(input: {
       mood_after: input.mood_after ?? null,
     },
     { onConflict: "user_id,date" }
-  );
+  ).select("id, date, happened, duration_min").maybeSingle();
   if (error) throw error;
+  if (!data) throw new Error("Meditation status was not saved");
 
   revalidatePath("/");
+  revalidatePath("/review");
   revalidatePath("/weekly");
   revalidatePath("/monthly");
+  return data;
 }
 
 // One/two-tap mood+energy check-in. Multiple per day are allowed (mood
