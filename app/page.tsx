@@ -7,8 +7,11 @@ import type { Task } from "@/lib/types";
 import ActivityLedger, { type ActivityEntry } from "@/components/ActivityLedger";
 import StreakGrid from "@/components/StreakGrid";
 import PlanDayGesture from "@/components/PlanDayGesture";
+import SectionBlock from "@/components/SectionBlock";
 
-export default async function MorningDashboard(props: { searchParams?: Promise<{ date?: string }> }) {
+type HomeSection = "priorities" | "current-work" | "schedule" | "consistency";
+
+export default async function MorningDashboard(props: { searchParams?: Promise<{ date?: string; section?: string }> }) {
   const searchParams = await props.searchParams;
   const supabase = await createClient();
   const {
@@ -17,6 +20,7 @@ export default async function MorningDashboard(props: { searchParams?: Promise<{
 
   const today = todayISO();
   const date = searchParams?.date || today;
+  const section = searchParams?.section as HomeSection | undefined;
   const userId = user?.id ?? "";
 
   // Parallel fetch: daily plan + tasks, class occurrences, verdict, streaks, goals
@@ -167,8 +171,16 @@ export default async function MorningDashboard(props: { searchParams?: Promise<{
         </div>
       </section>
 
-      {/* INTERACTIVE TASKS SPREADSHEET (Checkboxes & Stars work directly on Home) */}
-      <section className="space-y-2">
+      {!section && <section aria-label="Home sections">
+        <SectionBlock href={`/?date=${date}&section=priorities`} title="Today&apos;s Priorities" summary={`${completedTasks} of ${totalTasks} tasks completed`} tone="active" />
+        <SectionBlock href={`/?date=${date}&section=current-work`} title="What I&apos;m Doing Right Now" summary={`${checkInsRes.data?.length ?? 0} ongoing or paused activities`} tone="good" />
+        <SectionBlock href={`/?date=${date}&section=schedule`} title="Schedule" summary={nextItem ?? "Nothing scheduled today"} />
+        <SectionBlock href={`/?date=${date}&section=consistency`} title="Consistency / Streak" summary={`${currentStreak} day current streak`} tone="good" />
+      </section>}
+
+      {section === "priorities" && <section className="space-y-2">
+        <Link href={`/?date=${date}`} className="section-detail-back">← Back to home</Link>
+        <h2 className="section-detail-title">Today&apos;s Priorities</h2>
         <div className="flex items-center justify-between border-y sm:border border-neutral-800/80 sm:rounded-xl bg-neutral-950/60 p-2">
           <Link href={`/?date=${shiftDateISO(date, -1)}`} prefetch={false} className="min-h-[40px] px-2 flex items-center text-xs font-mono text-neutral-300" aria-label="Previous day">← Prev</Link>
           <div className="text-center"><span className="text-sm font-semibold text-neutral-100">{formatDateDisplay(date)}</span>{date === today && <span className="ml-2 text-[9px] font-mono uppercase text-amber-300">Today</span>}</div>
@@ -177,14 +189,13 @@ export default async function MorningDashboard(props: { searchParams?: Promise<{
         <PlanDayGesture date={date}>
           <TaskSpreadsheet initialTasks={tasks} goals={goals} selectedDate={date} />
         </PlanDayGesture>
-      </section>
+      </section>}
 
-      <StreakGrid days={gridDays} currentStreak={currentStreak} longestStreak={maxStreak} />
+      {section === "consistency" && <section className="space-y-2"><Link href={`/?date=${date}`} className="section-detail-back">← Back to home</Link><h2 className="section-detail-title">Consistency / Streak</h2><StreakGrid days={gridDays} currentStreak={currentStreak} longestStreak={maxStreak} /></section>}
 
-      <ActivityLedger initialEntries={(checkInsRes.data ?? []) as ActivityEntry[]} />
+      {section === "current-work" && <section className="space-y-2"><Link href={`/?date=${date}`} className="section-detail-back">← Back to home</Link><ActivityLedger initialEntries={(checkInsRes.data ?? []) as ActivityEntry[]} /></section>}
 
-      {/* TODAY'S SCHEDULE & ATTENDANCE TABLE */}
-      <section className="space-y-1 pt-2"><ScheduleTable items={scheduleItems} selectedDate={date} isHomeView={true} /></section>
+      {section === "schedule" && <section className="space-y-2"><Link href={`/?date=${date}`} className="section-detail-back">← Back to home</Link><h2 className="section-detail-title">Schedule</h2><ScheduleTable items={scheduleItems} selectedDate={date} isHomeView={true} /></section>}
     </div>
   );
 }

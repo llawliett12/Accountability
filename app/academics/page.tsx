@@ -8,9 +8,11 @@ import {
 import { todayISO, shiftDateISO } from "@/lib/date";
 import AcademicsHub, { AcademicsTab } from "@/components/AcademicsHub";
 import AcademicScheduleScreenshots from "@/components/AcademicScheduleScreenshots";
+import Link from "next/link";
+import SectionBlock from "@/components/SectionBlock";
 
 export default async function AcademicsPage(props: {
-  searchParams?: Promise<{ tab?: string }>;
+  searchParams?: Promise<{ tab?: string; section?: string }>;
 }) {
   const searchParams = await props.searchParams;
   const supabase = await createClient();
@@ -45,7 +47,11 @@ export default async function AcademicsPage(props: {
 
   const validTabs: AcademicsTab[] = ["assessments", "timetable", "deadlines", "performance", "classes"];
   const requestedTab = searchParams?.tab as AcademicsTab | undefined;
-  const defaultTab = requestedTab && validTabs.includes(requestedTab) ? requestedTab : "assessments";
+  const requestedSection = searchParams?.section as AcademicsTab | "screenshots" | undefined;
+  const activeSection = requestedSection ?? (requestedTab && validTabs.includes(requestedTab) ? requestedTab : undefined);
+  const defaultTab = activeSection && activeSection !== "screenshots" ? activeSection : "assessments";
+  const upcomingAssessments = assessments.filter((assessment) => assessment.status !== "completed").length;
+  const openDeadlines = deadlines.filter((deadline) => deadline.status !== "completed").length;
 
   return (
     <div className="space-y-5">
@@ -56,14 +62,24 @@ export default async function AcademicsPage(props: {
         </div>
       </header>
 
-      <AcademicsHub
+      {!activeSection && <section aria-label="Academic sections">
+        <SectionBlock href="/academics?section=assessments" title="Academic Overview" summary={`${upcomingAssessments} assessments and ${openDeadlines} open deadlines`} tone="active" />
+        <SectionBlock href="/academics?section=classes" title="Classes & Attendance" summary={`${classes.filter((item) => item.active).length} active classes`} />
+        <SectionBlock href="/academics?section=assessments" title="Assessments" summary={`${upcomingAssessments} upcoming or unscored`} tone={upcomingAssessments ? "warn" : "good"} />
+        <SectionBlock href="/academics?section=deadlines" title="Deadlines" summary={`${openDeadlines} open deadlines`} tone={openDeadlines ? "warn" : "good"} />
+        <SectionBlock href="/academics?section=performance" title="Scores & Performance" summary="Assessment scores and progress" />
+        <SectionBlock href="/academics?section=timetable" title="Timetable / Schedule" summary="Classes and weekly timetable" />
+        <SectionBlock href="/academics?section=screenshots" title="Schedule Screenshots" summary={`${screenshots.length} reference documents`} />
+      </section>}
+
+      {activeSection && activeSection !== "screenshots" && <section className="space-y-4"><Link href="/academics" className="section-detail-back">← Back to Academics</Link><AcademicsHub
         initialClasses={classes}
         initialAssessments={assessments}
         initialDeadlines={deadlines}
         initialOccurrences={occurrences}
         defaultTab={defaultTab}
-      />
-      <AcademicScheduleScreenshots initialDocuments={screenshots} />
+      /></section>}
+      {activeSection === "screenshots" && <section className="space-y-4"><Link href="/academics" className="section-detail-back">← Back to Academics</Link><AcademicScheduleScreenshots initialDocuments={screenshots} /></section>}
     </div>
   );
 }
