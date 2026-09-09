@@ -321,30 +321,30 @@ export async function createCheckIn(input: {
   } = await supabase.auth.getUser();
   if (!user) throw new Error("Not authenticated");
 
-  const { error } = await supabase.from("check_ins").upsert(
-    {
-      user_id: user.id,
-      actual_activity: actualActivity,
-      intended_task_id: input.intended_task_id ?? null,
-      drift_state: input.drift_state,
-      client_id: input.clientId ?? null,
-      timestamp: startedAt,
-      status: "ongoing",
-    },
-    input.clientId ? { onConflict: "user_id,client_id", ignoreDuplicates: true } : undefined
-  );
-  if (error) throw error;
+  const checkIn = {
+    user_id: user.id,
+    actual_activity: actualActivity,
+    intended_task_id: input.intended_task_id ?? null,
+    drift_state: input.drift_state,
+    client_id: input.clientId ?? null,
+    timestamp: startedAt,
+    status: "ongoing",
+  };
+  const { data: inserted, error: insertError } = await supabase.from("check_ins").insert(checkIn).select("id, actual_activity, timestamp, status, completed_at").maybeSingle();
+  if (insertError && (!input.clientId || insertError.code !== "23505")) throw insertError;
 
-  const savedQuery = supabase
-    .from("check_ins")
-    .select("id, actual_activity, timestamp, status, completed_at")
-    .eq("user_id", user.id)
-    .order("timestamp", { ascending: false })
-    .limit(1);
-  const { data: saved, error: savedError } = input.clientId
-    ? await savedQuery.eq("client_id", input.clientId).maybeSingle()
-    : await savedQuery.eq("timestamp", startedAt).maybeSingle();
-  if (savedError || !saved) throw savedError ?? new Error("Activity was not saved");
+  // A queued replay may repeat a write whose response was lost. The unique
+  // (user_id, client_id) index makes this lookup safe and keeps the original
+  // timestamp/status intact instead of rewriting an already-synced activity.
+  const { data: saved, error: savedError } = inserted
+    ? { data: inserted, error: null }
+    : await supabase
+      .from("check_ins")
+      .select("id, actual_activity, timestamp, status, completed_at")
+      .eq("user_id", user.id)
+      .eq("client_id", input.clientId!)
+      .maybeSingle();
+  if (savedError || !saved) throw savedError ?? insertError ?? new Error("Activity was not saved");
 
   await bumpStreak(supabase, user.id, "tracking", todayISO());
 
@@ -377,26 +377,31 @@ export async function deleteCheckIn(checkInId: string) {
   revalidatePath("/review");
 }
 
-export async function completeCheckIn(checkInId: string, completedAt?: string) {
-  const resolvedCompletedAt = completedAt && !Number.isNaN(Date.parse(completedAt))
-    ? completedAt
-    : new Date().toISOString();
+export async function updateCheckInStatus(checkInId: string, status: "ongoing" | "paused" | "completed") {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) throw new Error("Not authenticated");
+  const changes = status === "completed"
+    ? { status, completed_at: new Date().toISOString() }
+    : { status, completed_at: null };
   const { data, error } = await supabase
     .from("check_ins")
-    .update({ status: "completed", completed_at: resolvedCompletedAt })
+    .update(changes)
     .eq("id", checkInId)
     .eq("user_id", user.id)
-    .eq("status", "ongoing")
-    .select("id")
+    .in("status", ["ongoing", "paused"])
+    .select("id, actual_activity, timestamp, status, completed_at")
     .maybeSingle();
   if (error) throw error;
-  if (!data) throw new Error("Activity is no longer ongoing");
+  if (!data) throw new Error("Activity is no longer current");
   revalidatePath("/");
   revalidatePath("/now");
   revalidatePath("/review");
+  return data;
+}
+
+export async function completeCheckIn(checkInId: string) {
+  return updateCheckInStatus(checkInId, "completed");
 }
 
 // --- Focus timer: timestamp-based so it survives Android tab backgrounding ---

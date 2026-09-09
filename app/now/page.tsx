@@ -7,7 +7,7 @@ export default async function NowPage() {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   const { data: entries } = user
-    ? await supabase.from("check_ins").select("id, actual_activity, timestamp, status, completed_at").eq("user_id", user.id).eq("status", "ongoing").order("timestamp", { ascending: false }).limit(20)
+    ? await supabase.from("check_ins").select("id, actual_activity, timestamp, status, completed_at").eq("user_id", user.id).in("status", ["ongoing", "paused"]).order("timestamp", { ascending: false }).limit(20)
     : { data: [] };
   return (
     <div className="space-y-6">
