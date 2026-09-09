@@ -174,7 +174,7 @@ export async function fetchDailyMetrics(
   for (const s of sleep ?? []) {
     const a = acc.get(s.date as string);
     if (!a) continue;
-    a.sleepMinutes = s.total_minutes;
+    a.sleepMinutes = (a.sleepMinutes ?? 0) + s.total_minutes;
   }
 
   for (const m of meditation ?? []) {

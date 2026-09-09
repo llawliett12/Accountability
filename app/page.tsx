@@ -1,19 +1,22 @@
 import { createClient } from "@/lib/supabase/server";
 import Link from "next/link";
-import { shiftDateISO, todayISO } from "@/lib/date";
+import { formatDateDisplay, shiftDateISO, todayISO } from "@/lib/date";
 import TaskSpreadsheet from "@/components/TaskSpreadsheet";
 import ScheduleTable, { ScheduleItem } from "@/components/ScheduleTable";
 import type { Task } from "@/lib/types";
 import ActivityLedger, { type ActivityEntry } from "@/components/ActivityLedger";
 import StreakGrid from "@/components/StreakGrid";
+import PlanDayGesture from "@/components/PlanDayGesture";
 
-export default async function MorningDashboard() {
+export default async function MorningDashboard(props: { searchParams?: Promise<{ date?: string }> }) {
+  const searchParams = await props.searchParams;
   const supabase = await createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
 
-  const date = todayISO();
+  const today = todayISO();
+  const date = searchParams?.date || today;
   const userId = user?.id ?? "";
 
   // Parallel fetch: daily plan + tasks, class occurrences, verdict, streaks, goals
@@ -116,18 +119,12 @@ export default async function MorningDashboard() {
       {/* HEADER SECTION */}
       <header className="flex items-center justify-between pt-1 border-b border-neutral-800/80 pb-3">
         <div>
-          <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-white">
+          <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-white">
             Daily Command Ledger
           </h1>
           <p className="font-mono text-xs text-neutral-400 capitalize">{formattedDate}</p>
         </div>
         <div className="flex items-center gap-2">
-          <Link
-            href="/plan"
-            className="text-xs font-mono font-medium text-amber-400 hover:text-amber-300 transition-colors"
-          >
-            Full Plan →
-          </Link>
           <Link
             href="/settings"
             className="min-h-[38px] min-w-[38px] flex items-center justify-center rounded-lg bg-neutral-900 border border-neutral-800 text-neutral-400 hover:text-white transition"
@@ -168,13 +165,15 @@ export default async function MorningDashboard() {
       </section>
 
       {/* INTERACTIVE TASKS SPREADSHEET (Checkboxes & Stars work directly on Home) */}
-      <section className="space-y-1">
-        <TaskSpreadsheet
-          initialTasks={tasks}
-          goals={goals}
-          selectedDate={date}
-          isHomeView={true}
-        />
+      <section className="space-y-2">
+        <div className="flex items-center justify-between border-y sm:border border-neutral-800/80 sm:rounded-xl bg-neutral-950/60 p-2">
+          <Link href={`/?date=${shiftDateISO(date, -1)}`} prefetch={false} className="min-h-[40px] px-2 flex items-center text-xs font-mono text-neutral-300" aria-label="Previous day">← Prev</Link>
+          <div className="text-center"><span className="text-sm font-semibold text-neutral-100">{formatDateDisplay(date)}</span>{date === today && <span className="ml-2 text-[9px] font-mono uppercase text-amber-300">Today</span>}</div>
+          <Link href={`/?date=${shiftDateISO(date, 1)}`} prefetch={false} className="min-h-[40px] px-2 flex items-center text-xs font-mono text-neutral-300" aria-label="Next day">Next →</Link>
+        </div>
+        <PlanDayGesture date={date}>
+          <TaskSpreadsheet initialTasks={tasks} goals={goals} selectedDate={date} />
+        </PlanDayGesture>
       </section>
 
       <StreakGrid days={gridDays} currentStreak={currentStreak} longestStreak={maxStreak} />

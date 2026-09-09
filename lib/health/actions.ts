@@ -2,7 +2,7 @@
 
 import { createClient } from "@/lib/supabase/server";
 import { revalidatePath } from "next/cache";
-import { todayISO } from "@/lib/date";
+import { getLocalDateISO, todayISO } from "@/lib/date";
 
 // Duration is computed by the database (generated column), so callers never
 // have to calculate it — matches the "do not make the user do the math" spec.
@@ -13,6 +13,7 @@ export async function logSleep(input: {
   quality: number;
   poor_sleep_reason?: string;
   note?: string;
+  period_type?: "night" | "daytime";
 }) {
   const supabase = await createClient();
   const {
@@ -20,23 +21,45 @@ export async function logSleep(input: {
   } = await supabase.auth.getUser();
   if (!user) throw new Error("Not authenticated");
 
-  const { error } = await supabase.from("sleep_logs").upsert(
+  const { error } = await supabase.from("sleep_logs").insert(
     {
       user_id: user.id,
-      date: input.date ?? todayISO(),
+      date: input.date ?? getLocalDateISO(new Date(input.bedtime)),
       bedtime: input.bedtime,
       wake_time: input.wake_time,
       quality: input.quality,
       poor_sleep_reason: input.poor_sleep_reason ?? null,
       note: input.note ?? null,
-    },
-    { onConflict: "user_id,date" }
+      period_type: input.period_type ?? "night",
+    }
   );
   if (error) throw error;
 
   revalidatePath("/");
+  revalidatePath("/review");
   revalidatePath("/weekly");
   revalidatePath("/monthly");
+}
+
+export async function saveFoodHabits(input: {
+  date?: string;
+  breakfast: boolean;
+  lunch: boolean;
+  dinner: boolean;
+}) {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error("Not authenticated");
+  const { error } = await supabase.from("food_habits").upsert({
+    user_id: user.id,
+    date: input.date ?? todayISO(),
+    breakfast: input.breakfast,
+    lunch: input.lunch,
+    dinner: input.dinner,
+    updated_at: new Date().toISOString(),
+  }, { onConflict: "user_id,date" });
+  if (error) throw error;
+  revalidatePath("/review");
 }
 
 export async function logMeditation(input: {

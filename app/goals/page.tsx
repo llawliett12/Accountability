@@ -54,7 +54,7 @@ export default async function GoalsPage() {
   return (
     <div className="space-y-6 pb-6">
       <header className="border-b border-neutral-800/80 pb-3">
-        <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-white">Goals Ledger</h1>
+        <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-white">Goals Ledger</h1>
         <p className="font-mono text-xs text-neutral-400">Strategic hierarchy &amp; progress tracker</p>
       </header>
 

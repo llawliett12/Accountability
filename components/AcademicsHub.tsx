@@ -817,7 +817,7 @@ function DeadlinesSection({
                   <td className="py-2.5 px-2 text-center whitespace-nowrap">
                     {isDone ? (
                       <span className="rounded px-1.5 py-0.5 text-[9px] font-semibold uppercase bg-emerald-950/70 border border-emerald-800/60 text-emerald-300">
-                        Done
+                        Completed
                       </span>
                     ) : isOverdue ? (
                       <span className="rounded px-1.5 py-0.5 text-[9px] font-semibold uppercase bg-red-950/70 border border-red-800/60 text-red-300">
@@ -825,7 +825,7 @@ function DeadlinesSection({
                       </span>
                     ) : (
                       <span className="rounded px-1.5 py-0.5 text-[9px] font-semibold uppercase bg-neutral-900 border border-neutral-800 text-neutral-400">
-                        Upcoming
+                        Incomplete
                       </span>
                     )}
                   </td>

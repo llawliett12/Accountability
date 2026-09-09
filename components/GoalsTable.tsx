@@ -35,6 +35,7 @@ export default function GoalsTable({
             <tr className="border-b border-neutral-800 bg-neutral-900/80 text-[10px] font-mono uppercase tracking-wider text-neutral-400">
               <th className="py-2 px-2.5 w-20 text-center">Level</th>
               <th className="py-2 px-3">Goal</th>
+              <th className="py-2 px-2 w-16 text-center">Priority</th>
               <th className="py-2 px-3 w-36">Progress</th>
               <th className="py-2 px-2 w-24 text-center">Due Date</th>
               <th className="py-2 px-2 w-20 text-center">Status</th>
@@ -61,6 +62,8 @@ export default function GoalsTable({
                       {goal.level}
                     </span>
                   </td>
+
+                  <td className="py-2.5 px-2 text-center text-amber-300">P{goal.priority}</td>
 
                   {/* Title */}
                   <td className="py-2.5 px-3 font-sans">

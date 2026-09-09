@@ -14,6 +14,7 @@ export interface GoalCardData {
   title: string;
   level: string;
   status: string;
+  priority: number;
   computedProgress: number;
   due_date: string | null;
   overdue: boolean;

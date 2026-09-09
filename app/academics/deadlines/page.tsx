@@ -48,10 +48,10 @@ export default async function DeadlinesPage() {
       )}
 
       <section className="space-y-2">
-        <h2 className="text-sm font-medium text-neutral-400">Upcoming</h2>
+        <h2 className="text-sm font-medium text-neutral-400">Incomplete</h2>
         {pending.length === 0 ? (
           <div className="rounded-xl border border-neutral-800 bg-neutral-900/40 p-4 text-center">
-            <p className="text-sm text-neutral-400">No upcoming deadlines.</p>
+            <p className="text-sm text-neutral-400">No incomplete deadlines.</p>
             <p className="mt-1 text-xs text-neutral-500">
               Use the form above to add an assignment, project, or exam deadline.
             </p>

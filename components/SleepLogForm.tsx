@@ -10,6 +10,7 @@ export default function SleepLogForm() {
   const [wakeTime, setWakeTime] = useState("");
   const [quality, setQuality] = useState<number | null>(null);
   const [reason, setReason] = useState<string | null>(null);
+  const [periodType, setPeriodType] = useState<"night" | "daytime">("night");
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
   const [saved, setSaved] = useState(false);
@@ -32,6 +33,7 @@ export default function SleepLogForm() {
           wake_time: new Date(wakeTime).toISOString(),
           quality,
           poor_sleep_reason: quality <= 2 ? reason ?? undefined : undefined,
+          period_type: periodType,
         });
         setSaved(true);
       } catch (err: unknown) {
@@ -42,7 +44,10 @@ export default function SleepLogForm() {
 
   return (
     <div className="rounded-2xl bg-neutral-900 p-3">
-      <h2 className="mb-2 text-sm font-medium text-neutral-400">Sleep</h2>
+      <h2 className="mb-2 text-sm font-medium text-neutral-400">Sleep period</h2>
+      <div className="mb-3 flex gap-2">
+        {(["night", "daytime"] as const).map((type) => <button key={type} type="button" onClick={() => setPeriodType(type)} className={`min-h-9 flex-1 rounded border text-xs ${periodType === type ? "border-amber-700 bg-amber-500/10 text-amber-300" : "border-neutral-800 bg-neutral-950 text-neutral-500"}`}>{type === "night" ? "Night sleep" : "Daytime nap"}</button>)}
+      </div>
       <div className="grid grid-cols-2 gap-2">
         <label className="text-xs text-neutral-500">
           Bedtime
@@ -111,7 +116,7 @@ export default function SleepLogForm() {
         onClick={submit}
         className="mt-3 w-full rounded-lg bg-white py-2 text-sm font-medium text-neutral-950 disabled:opacity-40"
       >
-        {pending ? "Saving..." : saved ? "Saved ✓" : "Save sleep"}
+        {pending ? "Saving..." : saved ? "Saved ✓" : "Save sleep period"}
       </button>
     </div>
   );

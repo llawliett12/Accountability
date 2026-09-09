@@ -114,6 +114,8 @@ export default async function GoalDetailPage({
       <section className="rounded-2xl bg-neutral-900 p-4">
         <GoalDetailControls
           goalId={goal.id}
+          title={goal.title}
+          priority={goal.priority}
           status={goal.status}
           currentValue={goal.current_value}
           targetValue={goal.target_value}

@@ -11,6 +11,7 @@ import RunScoringButton from "@/components/RunScoringButton";
 import SleepLogForm from "@/components/SleepLogForm";
 import MeditationLogForm from "@/components/MeditationLogForm";
 import ReviewNotesLedger from "@/components/ReviewNotesLedger";
+import FoodHabitLedger from "@/components/FoodHabitLedger";
 
 function formatMinutesToHours(minutes: number | null): string {
   if (minutes === null || minutes <= 0) return "--";
@@ -47,6 +48,7 @@ export default async function ReviewPage() {
     todayMetricRes,
     weekDailyScoresRes,
     reviewNoteRes,
+    foodHabitsRes,
   ] = await Promise.all([
     getOrCreateDailyPlan(today, user.id),
     fetchDailyMetrics(user.id, weekStart, today),
@@ -68,6 +70,12 @@ export default async function ReviewPage() {
     supabase
       .from("review_notes")
       .select("content")
+      .eq("user_id", user.id)
+      .eq("date", today)
+      .maybeSingle(),
+    supabase
+      .from("food_habits")
+      .select("breakfast, lunch, dinner")
       .eq("user_id", user.id)
       .eq("date", today)
       .maybeSingle(),
@@ -134,7 +142,7 @@ export default async function ReviewPage() {
   return (
     <div className="space-y-6 pb-6">
       <header className="border-b border-neutral-800/80 pb-3">
-        <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-white">Review Ledger</h1>
+        <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-white">Review Ledger</h1>
         <p className="font-mono text-xs text-neutral-400">Weekly progress, academic performance &amp; night check-in</p>
       </header>
 
@@ -351,10 +359,15 @@ export default async function ReviewPage() {
           <ReviewNotesLedger date={today} initialContent={reviewNoteRes.data?.content ?? null} />
         </div>
 
+        <div className="space-y-1.5 pt-2">
+          <div className="text-xs font-medium text-neutral-300 font-mono">5. Food Habits</div>
+          <FoodHabitLedger date={today} initialMeals={foodHabitsRes.data ?? null} />
+        </div>
+
         {/* DISCIPLINE SCORING */}
         <div className="pt-2">
           <div className="flex items-center justify-between border-t border-neutral-800 pt-3">
-            <span className="text-xs font-medium text-neutral-300 font-mono">5. Run Daily Discipline Score</span>
+            <span className="text-xs font-medium text-neutral-300 font-mono">6. Run Daily Discipline Score</span>
             <RunScoringButton date={today} />
           </div>
         </div>

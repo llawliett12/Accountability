@@ -14,6 +14,8 @@ const STATUS_OPTIONS: { value: GoalStatus; label: string }[] = [
 
 export default function GoalDetailControls({
   goalId,
+  title,
+  priority,
   status,
   currentValue,
   targetValue,
@@ -22,6 +24,8 @@ export default function GoalDetailControls({
   linkedTaskCount,
 }: {
   goalId: string;
+  title: string;
+  priority: number;
   status: GoalStatus;
   currentValue: number | null;
   targetValue: number | null;
@@ -36,6 +40,8 @@ export default function GoalDetailControls({
   const [manualInput, setManualInput] = useState(
     manualProgress !== null ? String(manualProgress) : ""
   );
+  const [titleInput, setTitleInput] = useState(title);
+  const [priorityInput, setPriorityInput] = useState(priority);
   const router = useRouter();
 
   function setStatus(newStatus: GoalStatus) {
@@ -50,6 +56,12 @@ export default function GoalDetailControls({
   function saveManualProgress() {
     const n = manualInput.trim() === "" ? null : Number(manualInput);
     startTransition(() => updateGoal(goalId, { manual_progress: n }));
+  }
+
+  function saveDetails() {
+    const nextTitle = titleInput.trim();
+    if (!nextTitle) return;
+    startTransition(() => updateGoal(goalId, { title: nextTitle, priority: priorityInput }));
   }
 
   function onDelete() {
@@ -69,6 +81,11 @@ export default function GoalDetailControls({
 
   return (
     <div className="space-y-3">
+      <div className="grid grid-cols-[1fr_auto] gap-2">
+        <input value={titleInput} onChange={(e) => setTitleInput(e.target.value)} aria-label="Goal title" className="min-h-10 rounded border border-neutral-800 bg-neutral-950 px-2 text-sm text-neutral-100 outline-none focus:border-amber-700" />
+        <select value={priorityInput} onChange={(e) => setPriorityInput(Number(e.target.value))} aria-label="Goal importance" className="rounded border border-neutral-800 bg-neutral-950 px-2 text-xs text-neutral-200"><option value={1}>P1</option><option value={2}>P2</option><option value={3}>P3</option><option value={4}>P4</option><option value={5}>P5</option></select>
+      </div>
+      <button type="button" disabled={pending || !titleInput.trim()} onClick={saveDetails} className="text-xs text-amber-400 hover:text-amber-300">Save goal details</button>
       <div className="flex flex-wrap gap-1.5">
         {STATUS_OPTIONS.map((opt) => (
           <button

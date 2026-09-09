@@ -44,7 +44,7 @@ export default async function AcademicsPage(props: {
     <div className="space-y-5">
       <header className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight text-white">Academics</h1>
+          <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-white">Academics</h1>
           <p className="text-xs text-neutral-400">Integrated workspace for tests, timetable &amp; grades</p>
         </div>
       </header>
