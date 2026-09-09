@@ -152,18 +152,35 @@ export async function fetchAcademicDashboard(userId: string): Promise<AcademicDa
   const now = new Date();
   const nowTime = now.toTimeString().slice(0, 8);
 
-  const classes = await fetchClassesWithAttendance(userId);
-  const classNameById = new Map(classes.map((c) => [c.id, c.name]));
+  const [
+    classes,
+    { data: upcomingOccRaw },
+    assessments,
+    deadlines,
+    { data: recentOccForPrep },
+  ] = await Promise.all([
+    fetchClassesWithAttendance(userId),
+    supabase
+      .from("class_occurrences")
+      .select("*")
+      .eq("user_id", userId)
+      .gte("date", today)
+      .neq("status", "cancelled")
+      .order("date", { ascending: true })
+      .order("start_time", { ascending: true })
+      .limit(20),
+    fetchAssessments(userId),
+    fetchDeadlines(userId),
+    supabase
+      .from("class_occurrences")
+      .select("prepared, reviewed, status")
+      .eq("user_id", userId)
+      .lte("date", today)
+      .order("date", { ascending: false })
+      .limit(30),
+  ]);
 
-  const { data: upcomingOccRaw } = await supabase
-    .from("class_occurrences")
-    .select("*")
-    .eq("user_id", userId)
-    .gte("date", today)
-    .neq("status", "cancelled")
-    .order("date", { ascending: true })
-    .order("start_time", { ascending: true })
-    .limit(20);
+  const classNameById = new Map(classes.map((c) => [c.id, c.name]));
 
   const upcomingOcc = (upcomingOccRaw ?? []) as ClassOccurrence[];
   const withNames = upcomingOcc.map((o) => ({ ...o, className: classNameById.get(o.class_id) ?? "Class" }));
@@ -173,7 +190,6 @@ export async function fetchAcademicDashboard(userId: string): Promise<AcademicDa
     withNames.find((o) => o.date > today || (o.date === today && (o.start_time ?? "23:59:59") >= nowTime)) ??
     null;
 
-  const assessments = await fetchAssessments(userId);
   const upcomingAssessments = assessments
     .filter((a) => !isAssessmentPast(a.date, a.status, today))
     .slice(0, 10);
@@ -187,19 +203,10 @@ export async function fetchAcademicDashboard(userId: string): Promise<AcademicDa
     }));
   const averageScorePct = averageAssessmentPercentage(assessments);
 
-  const deadlines = await fetchDeadlines(userId);
   const overdueDeadlines = deadlines.filter((d) => isDeadlineOverdue(d.due_date, d.status, today));
   const upcomingDeadlines = deadlines
     .filter((d) => d.status === "pending" && !isDeadlineOverdue(d.due_date, d.status, today))
     .slice(0, 10);
-
-  const { data: recentOccForPrep } = await supabase
-    .from("class_occurrences")
-    .select("prepared, reviewed, status")
-    .eq("user_id", userId)
-    .lte("date", today)
-    .order("date", { ascending: false })
-    .limit(30);
 
   const prepReview = summarizePrepReview((recentOccForPrep ?? []) as { prepared: boolean; reviewed: boolean; status: string }[]);
 

@@ -5,25 +5,9 @@ import { fetchDailyMetrics, addDays } from "@/lib/analytics/queries";
 import { sum, average } from "@/lib/analytics/engine";
 import { fetchAcademicDashboard } from "@/lib/academics/queries";
 import { fetchScreenTimeMinutesByDate } from "@/lib/screen-time/queries";
-import { DEFAULT_TIMEZONE, todayISO } from "@/lib/date";
-import ReconciliationList from "@/components/ReconciliationList";
-import RunScoringButton from "@/components/RunScoringButton";
-import SleepLogForm from "@/components/SleepLogForm";
-import MeditationLogForm from "@/components/MeditationLogForm";
-import ReviewNotesLedger from "@/components/ReviewNotesLedger";
-import FoodHabitLedger from "@/components/FoodHabitLedger";
-import SleepPeriodRows, { type SleepPeriod } from "@/components/SleepPeriodRows";
-import SectionBlock from "@/components/SectionBlock";
-
-function formatMinutesToHours(minutes: number | null): string {
-  if (minutes === null || minutes <= 0) return "--";
-  const h = Math.floor(minutes / 60);
-  const m = Math.round(minutes % 60);
-  if (h === 0) return `${m}m`;
-  return m > 0 ? `${h}h ${m}m` : `${h}h`;
-}
-
-type ReviewSection = "sleep" | "food" | "activities" | "weekly" | "academics" | "night" | "meditation" | "notes";
+import { todayISO } from "@/lib/date";
+import ReviewSectionManager, { type ReviewSection } from "@/components/ReviewSectionManager";
+import { type SleepPeriod } from "@/components/SleepPeriodRows";
 
 export default async function ReviewPage(props: { searchParams?: Promise<{ date?: string; section?: string }> }) {
   const searchParams = await props.searchParams;
@@ -81,20 +65,14 @@ export default async function ReviewPage(props: { searchParams?: Promise<{ date?
       .eq("user_id", user.id)
       .eq("date", selectedDate)
       .order("bedtime", { ascending: false }),
-    section === "activities" ? supabase
+    supabase
       .from("check_ins")
       .select("id, actual_activity, timestamp, completed_at")
       .eq("user_id", user.id)
       .eq("status", "completed")
       .gte("timestamp", `${selectedDate}T00:00:00+05:30`)
       .lt("timestamp", `${tomorrow}T00:00:00+05:30`)
-      .order("timestamp", { ascending: true }) : supabase
-      .from("check_ins")
-      .select("id", { count: "exact", head: true })
-      .eq("user_id", user.id)
-      .eq("status", "completed")
-      .gte("timestamp", `${selectedDate}T00:00:00+05:30`)
-      .lt("timestamp", `${tomorrow}T00:00:00+05:30`),
+      .order("timestamp", { ascending: true }),
     supabase
       .from("meditation_logs")
       .select("happened, duration_min")
@@ -161,262 +139,43 @@ export default async function ReviewPage(props: { searchParams?: Promise<{ date?
 
   const todayScore = scoreByDate.get(selectedDate) ?? null;
   const completedActivities = (completedActivitiesRes.data ?? []) as { id: string; actual_activity: string; timestamp: string; completed_at: string | null }[];
-  const completedActivityCount = completedActivitiesRes.count ?? completedActivities.length;
 
   return (
     <div className="space-y-6 pb-6">
       <header className="border-b border-neutral-800/80 pb-3">
         <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-white">Review Ledger</h1>
         <div className="mt-2 flex items-center justify-between font-mono text-xs text-neutral-400">
-          <Link href={`/review?date=${addDays(selectedDate, -1)}${section ? `&section=${section}` : ""}`} className="min-h-10 flex items-center px-1">← Prev</Link>
+          <Link href={`/review?date=${addDays(selectedDate, -1)}`} className="min-h-10 flex items-center px-1">← Prev</Link>
           <span>{selectedDate}</span>
-          <Link href={`/review?date=${addDays(selectedDate, 1)}${section ? `&section=${section}` : ""}`} className="min-h-10 flex items-center px-1">Next →</Link>
+          <Link href={`/review?date=${addDays(selectedDate, 1)}`} className="min-h-10 flex items-center px-1">Next →</Link>
         </div>
       </header>
 
-      {!section && <section aria-label="Review sections">
-        <SectionBlock href={`/review?date=${selectedDate}&section=sleep`} title="Sleep & Recovery" summary={avgSleepMinutes ? `${formatMinutesToHours(avgSleepMinutes)} average this week` : "No sleep recorded yet"} tone="good" />
-        <SectionBlock href={`/review?date=${selectedDate}&section=food`} title="Eating Habits" summary={foodHabitsRes.data ? "Meals recorded for this day" : "No meals recorded for this day"} />
-        <SectionBlock href={`/review?date=${selectedDate}&section=activities`} title="What I Did" summary={`${completedActivityCount} completed activities`} tone="good" />
-        <SectionBlock href={`/review?date=${selectedDate}&section=weekly`} title="Weekly Performance" summary={`${tasksCompleted}/${tasksPlanned} tasks completed in the last 7 days`} tone="active" />
-        <SectionBlock href={`/review?date=${selectedDate}&section=academics`} title="Academic Status" summary={averageAcademicPct !== null ? `${averageAcademicPct}% assessment average` : "No scored assessments yet"} />
-        <SectionBlock href={`/review?date=${selectedDate}&section=night`} title="Night Check-in" summary={`${tasksToReconcile?.length ?? 0} open tasks to reconcile`} tone={(tasksToReconcile?.length ?? 0) > 0 ? "warn" : "neutral"} />
-        <SectionBlock href={`/review?date=${selectedDate}&section=meditation`} title="Meditation" summary={meditationRes.data?.happened ? "Recorded for this day" : "Not recorded for this day"} tone={meditationRes.data?.happened ? "good" : "neutral"} />
-        <SectionBlock href={`/review?date=${selectedDate}&section=notes`} title="Notes" summary={reviewNoteRes.data?.content ? "Closing note saved" : "No closing note yet"} />
-      </section>}
-
-      {section === "weekly" && <><Link href={`/review?date=${selectedDate}`} className="section-detail-back">← Back to Review</Link>
-      <section className="space-y-2">
-        <div className="flex items-center justify-between border-b border-neutral-800/80 pb-2">
-          <div className="flex items-center gap-2">
-            <span className="font-mono text-xs font-semibold uppercase tracking-wider text-neutral-300">
-              Weekly Performance Ledger
-            </span>
-            <span className="font-mono text-[11px] text-neutral-500">
-              [Last 7 Days: {weekStart} → {selectedDate}]
-            </span>
-          </div>
-          <span className="font-mono text-xs text-emerald-400">
-            🔥 {bestStreak}d streak
-          </span>
-        </div>
-
-        <div className="overflow-x-auto border-y sm:border border-neutral-800/80 sm:rounded-xl bg-neutral-950/50">
-          <table className="w-full text-left text-xs border-collapse min-w-[520px]">
-            <thead>
-              <tr className="border-b border-neutral-800 bg-neutral-900/80 text-[10px] font-mono uppercase tracking-wider text-neutral-400">
-                <th className="py-2 px-3">Date</th>
-                <th className="py-2 px-3 text-center">Tasks (Done / Plan)</th>
-                <th className="py-2 px-2 text-center">Focus</th>
-                <th className="py-2 px-2 text-center">Sleep</th>
-                <th className="py-2 px-2 text-center">Screen</th>
-                <th className="py-2 px-3 text-right">Score</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-neutral-800/60 font-mono text-xs">
-              {weeklyMetrics.map((row) => {
-                const isCurrent = row.date === selectedDate;
-                const score = scoreByDate.get(row.date) ?? null;
-                const scrTime = screenTimeMap.get(row.date) ?? null;
-
-                return (
-                  <tr
-                    key={row.date}
-                    className={`hover:bg-neutral-900/50 transition-colors ${
-                      isCurrent ? "bg-amber-950/15" : ""
-                    }`}
-                  >
-                    <td className="py-2 px-3 whitespace-nowrap">
-                      <span className={isCurrent ? "font-bold text-amber-300" : "text-neutral-300"}>
-                        {row.date}
-                      </span>
-                      {isCurrent && (
-                        <span className="ml-2 text-[9px] bg-amber-500/20 text-amber-300 px-1 rounded uppercase">
-                          Today
-                        </span>
-                      )}
-                    </td>
-                    <td className="py-2 px-3 text-center text-neutral-200">
-                      {row.tasksCompleted} / {row.tasksPlanned}
-                      {row.tasksPlanned > 0 && (
-                        <span className="text-neutral-500 text-[10px] ml-1">
-                          ({Math.round((row.tasksCompleted / row.tasksPlanned) * 100)}%)
-                        </span>
-                      )}
-                    </td>
-                    <td className="py-2 px-2 text-center text-amber-300/90">
-                      {formatMinutesToHours(row.focusMinutes)}
-                    </td>
-                    <td className="py-2 px-2 text-center text-indigo-300/90">
-                      {formatMinutesToHours(row.sleepMinutes)}
-                    </td>
-                    <td className="py-2 px-2 text-center text-neutral-400">
-                      {formatMinutesToHours(scrTime)}
-                    </td>
-                    <td className="py-2 px-3 text-right">
-                      {score !== null ? (
-                        <span className="font-bold text-emerald-400">{score}</span>
-                      ) : (
-                        <span className="text-neutral-600">--</span>
-                      )}
-                    </td>
-                  </tr>
-                );
-              })}
-
-              {/* TOTALS & AVERAGES ROW */}
-              <tr className="border-t border-neutral-700 bg-neutral-900/60 font-semibold text-neutral-200">
-                <td className="py-2.5 px-3 uppercase text-[10px] tracking-wider text-neutral-400">
-                  Total / Avg
-                </td>
-                <td className="py-2.5 px-3 text-center">
-                  {tasksCompleted} / {tasksPlanned}
-                  {tasksPlanned > 0 && (
-                    <span className="text-neutral-400 text-[10px] ml-1">
-                      ({Math.round((tasksCompleted / tasksPlanned) * 100)}%)
-                    </span>
-                  )}
-                </td>
-                <td className="py-2.5 px-2 text-center text-amber-300">
-                  {formatMinutesToHours(totalFocusMinutes)}
-                </td>
-                <td className="py-2.5 px-2 text-center text-indigo-300">
-                  {formatMinutesToHours(avgSleepMinutes)}
-                </td>
-                <td className="py-2.5 px-2 text-center text-neutral-300">
-                  {formatMinutesToHours(avgScreenTimeMinutes)}
-                </td>
-                <td className="py-2.5 px-3 text-right text-emerald-400 font-mono">
-                  {todayScore !== null ? `${todayScore}` : "--"}
-                </td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-      </section></>}
-
-      {section === "academics" && <><Link href={`/review?date=${selectedDate}`} className="section-detail-back">← Back to Review</Link>
-      <section className="space-y-2">
-        <div className="flex items-center justify-between border-b border-neutral-800/80 pb-2">
-          <span className="font-mono text-xs font-semibold uppercase tracking-wider text-neutral-300">
-            Academic Status Ledger
-          </span>
-          <Link
-            href="/academics"
-            className="text-xs font-mono font-medium text-amber-400 hover:text-amber-300 transition-colors"
-          >
-            Academics Hub →
-          </Link>
-        </div>
-
-        <div className="overflow-x-auto border-y sm:border border-neutral-800/80 sm:rounded-xl bg-neutral-950/50">
-          <table className="w-full text-left text-xs border-collapse">
-            <thead>
-              <tr className="border-b border-neutral-800 bg-neutral-900/80 text-[10px] font-mono uppercase tracking-wider text-neutral-400">
-                <th className="py-2 px-3">Metric</th>
-                <th className="py-2 px-3 text-center">Value</th>
-                <th className="py-2 px-3 text-left">Detail</th>
-                <th className="py-2 px-3 text-right">Action</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-neutral-800/60 font-mono text-xs">
-              <tr className="hover:bg-neutral-900/50 transition-colors">
-                <td className="py-2.5 px-3 text-neutral-300 font-medium">Assessment Average</td>
-                <td className="py-2.5 px-3 text-center font-bold text-base text-neutral-100">
-                  {averageAcademicPct !== null ? `${averageAcademicPct}%` : "--"}
-                </td>
-                <td className="py-2.5 px-3 text-neutral-400 text-[11px]">
-                  {scoredCount > 0 ? `${scoredCount} tests scored` : "No scored tests yet"}
-                </td>
-                <td className="py-2.5 px-3 text-right">
-                  <Link
-                    href="/academics"
-                    className="text-amber-400 hover:text-amber-300 text-xs"
-                  >
-                    View Sheet →
-                  </Link>
-                </td>
-              </tr>
-              <tr className="hover:bg-neutral-900/50 transition-colors">
-                <td className="py-2.5 px-3 text-neutral-300 font-medium">Class Attendance Rate</td>
-                <td className="py-2.5 px-3 text-center font-bold text-base text-neutral-100">
-                  {avgAttendancePct !== null ? `${avgAttendancePct}%` : "--"}
-                </td>
-                <td className="py-2.5 px-3 text-neutral-400 text-[11px]">
-                  {totalClassesTracked > 0 ? `${totalClassesTracked} subjects tracked` : "No subjects logged"}
-                </td>
-                <td className="py-2.5 px-3 text-right">
-                  <Link
-                    href="/academics"
-                    className="text-amber-400 hover:text-amber-300 text-xs"
-                  >
-                    Timetable →
-                  </Link>
-                </td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-      </section></>}
-
-      {section && section !== "weekly" && section !== "academics" && <><Link href={`/review?date=${selectedDate}`} className="section-detail-back">← Back to Review</Link>
-      <section className="space-y-4 pt-2">
-        <div className="flex items-center justify-between border-b border-neutral-800/80 pb-2">
-          <div className="flex items-center gap-2">
-            <span className="font-mono text-xs font-semibold uppercase tracking-wider text-neutral-300">
-              {section === "night" ? "Night Check-in" : section === "activities" ? "What I Did" : section === "sleep" ? "Sleep & Recovery" : section === "food" ? "Eating Habits" : section === "meditation" ? "Meditation" : "Notes"}
-            </span>
-            <span className="font-mono text-[11px] text-neutral-500">[{selectedDate}]</span>
-          </div>
-          {todayScore !== null && (
-            <span className="rounded bg-emerald-950/80 border border-emerald-800/50 px-2 py-0.5 font-mono text-xs font-bold text-emerald-400">
-              Score: {todayScore} / 100
-            </span>
-          )}
-        </div>
-
-        {/* TASK RECONCILIATION */}
-        {section === "night" && <div className="space-y-1.5">
-          <div className="text-xs font-medium text-neutral-300 font-mono">1. Reconcile Open Tasks</div>
-          <ReconciliationList tasks={(tasksToReconcile as unknown as import("@/lib/types").Task[]) ?? []} />
-        </div>}
-
-        {/* SLEEP LOG FORM */}
-        {section === "sleep" && <div className="space-y-1.5 pt-2">
-          <div className="text-xs font-medium text-neutral-300 font-mono">2. Log Sleep</div>
-          <SleepLogForm />
-          <SleepPeriodRows initialPeriods={(sleepPeriodsRes.data ?? []) as SleepPeriod[]} />
-        </div>}
-
-        {/* MEDITATION LOG FORM */}
-        {section === "meditation" && <div className="space-y-1.5 pt-2">
-          <div className="text-xs font-medium text-neutral-300 font-mono">3. Log Meditation &amp; Habits</div>
-          <MeditationLogForm date={selectedDate} initialHappened={meditationRes.data?.happened ?? null} initialDuration={meditationRes.data?.duration_min ?? null} />
-        </div>}
-
-        {section === "notes" && <div className="space-y-1.5 pt-2">
-          <div className="text-xs font-medium text-neutral-300 font-mono">4. Closing Notes</div>
-          <ReviewNotesLedger date={selectedDate} initialContent={reviewNoteRes.data?.content ?? null} />
-        </div>}
-
-        {section === "food" && <div className="space-y-1.5 pt-2">
-          <div className="text-xs font-medium text-neutral-300 font-mono">5. Food Habits</div>
-          <FoodHabitLedger date={selectedDate} initialMeals={foodHabitsRes.data ?? null} />
-        </div>}
-
-        {section === "activities" && <div className="space-y-1.5 pt-2">
-          <div className="text-xs font-medium text-neutral-300 font-mono">Completed Activities</div>
-          {completedActivities.length === 0 ? <p className="text-xs text-neutral-500">No completed activities started on this day.</p> : <div className="ledger-scroll"><table className="ledger-table min-w-[460px]"><thead><tr><th>S.No</th><th>Work</th><th>Started</th><th>Ended</th><th>Duration</th></tr></thead><tbody>{completedActivities.map((entry, index) => { const start = new Date(entry.timestamp); const end = entry.completed_at ? new Date(entry.completed_at) : null; const minutes = end ? Math.max(0, Math.round((end.getTime() - start.getTime()) / 60_000)) : null; return <tr key={entry.id}><td className="text-center font-mono text-[11px] text-neutral-500">{index + 1}</td><td className="text-neutral-200">{entry.actual_activity}</td><td className="font-mono text-[11px] text-neutral-500">{start.toLocaleTimeString([], { timeZone: DEFAULT_TIMEZONE, hour: "2-digit", minute: "2-digit" })}</td><td className="font-mono text-[11px] text-neutral-500">{end?.toLocaleTimeString([], { timeZone: DEFAULT_TIMEZONE, hour: "2-digit", minute: "2-digit" }) ?? "--"}</td><td className="font-mono text-[11px] text-neutral-300">{minutes === null ? "--" : `${minutes} min`}</td></tr>; })}</tbody></table></div>}
-        </div>}
-
-        {/* DISCIPLINE SCORING */}
-        {section === "night" && <div className="pt-2">
-          <div className="flex items-center justify-between border-t border-neutral-800 pt-3">
-            <span className="text-xs font-medium text-neutral-300 font-mono">6. Run Daily Discipline Score</span>
-            <RunScoringButton date={selectedDate} />
-          </div>
-        </div>}
-      </section></>}
+      <ReviewSectionManager
+        selectedDate={selectedDate}
+        weekStart={weekStart}
+        initialSection={section}
+        avgSleepMinutes={avgSleepMinutes}
+        foodHabitsData={foodHabitsRes.data ?? null}
+        completedActivities={completedActivities}
+        tasksCompleted={tasksCompleted}
+        tasksPlanned={tasksPlanned}
+        averageAcademicPct={averageAcademicPct}
+        scoredCount={scoredCount}
+        totalClassesTracked={totalClassesTracked}
+        avgAttendancePct={avgAttendancePct}
+        tasksToReconcile={(tasksToReconcile as unknown as import("@/lib/types").Task[]) ?? []}
+        meditationData={meditationRes.data ?? null}
+        reviewNoteContent={reviewNoteRes.data?.content ?? null}
+        weeklyMetrics={weeklyMetrics}
+        scoreByDateEntries={Array.from(scoreByDate.entries())}
+        screenTimeEntries={Array.from(screenTimeMap.entries())}
+        bestStreak={bestStreak}
+        totalFocusMinutes={totalFocusMinutes}
+        avgScreenTimeMinutes={avgScreenTimeMinutes}
+        todayScore={todayScore}
+        sleepPeriods={(sleepPeriodsRes.data ?? []) as SleepPeriod[]}
+      />
     </div>
   );
 }

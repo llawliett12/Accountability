@@ -1,15 +1,10 @@
 import { createClient } from "@/lib/supabase/server";
 import Link from "next/link";
-import { formatDateDisplay, shiftDateISO, todayISO } from "@/lib/date";
-import TaskSpreadsheet from "@/components/TaskSpreadsheet";
-import ScheduleTable, { ScheduleItem } from "@/components/ScheduleTable";
+import { shiftDateISO, todayISO } from "@/lib/date";
+import type { ScheduleItem } from "@/components/ScheduleTable";
+import type { ActivityEntry } from "@/components/ActivityLedger";
 import type { Task } from "@/lib/types";
-import ActivityLedger, { type ActivityEntry } from "@/components/ActivityLedger";
-import StreakGrid from "@/components/StreakGrid";
-import PlanDayGesture from "@/components/PlanDayGesture";
-import SectionBlock from "@/components/SectionBlock";
-
-type HomeSection = "priorities" | "current-work" | "schedule" | "consistency";
+import HomeSectionManager, { type HomeSection } from "@/components/HomeSectionManager";
 
 export default async function MorningDashboard(props: { searchParams?: Promise<{ date?: string; section?: string }> }) {
   const searchParams = await props.searchParams;
@@ -21,19 +16,17 @@ export default async function MorningDashboard(props: { searchParams?: Promise<{
   const today = todayISO();
   const date = searchParams?.date || today;
   const section = searchParams?.section as HomeSection | undefined;
-  const needsPriorityDetail = section === "priorities";
-  const needsConsistencyDetail = section === "consistency";
   const userId = user?.id ?? "";
 
-  // Parallel fetch: daily plan + tasks, class occurrences, verdict, streaks, goals
+  // Parallel fetch: daily plan + tasks, class occurrences, verdict, streaks, goals, check-ins, grid
   const gridStart = shiftDateISO(date, -83);
   const [planRes, classesRes, verdictRes, streaksRes, goalsRes, checkInsRes, gridPlansRes, scoreRes] = await Promise.all([
-    needsPriorityDetail ? supabase
+    supabase
       .from("daily_plans")
       .select("id, tasks(id, daily_plan_id, user_id, title, category, priority, planned_duration_min, planned_start, planned_end, deadline, notes, status, is_top3, goal_id)")
       .eq("user_id", userId)
       .eq("date", date)
-      .maybeSingle() : supabase.from("daily_plans").select("id, tasks(status)").eq("user_id", userId).eq("date", date).maybeSingle(),
+      .maybeSingle(),
     supabase
       .from("class_occurrences")
       .select("id, start_time, date, attendance_status, status, classes(name, location)")
@@ -52,14 +45,14 @@ export default async function MorningDashboard(props: { searchParams?: Promise<{
       .from("streaks")
       .select("streak_type, current_count")
       .eq("user_id", userId),
-    needsPriorityDetail ? supabase
+    supabase
       .from("goals")
       .select("id, title, level")
       .eq("user_id", userId)
-      .neq("status", "completed") : Promise.resolve({ data: [] as { id: string; title: string; level: string }[] }),
+      .neq("status", "completed"),
     supabase.from("check_ins").select("id, actual_activity, drift_state, timestamp, status, completed_at").eq("user_id", userId).in("status", ["ongoing", "paused"]).order("timestamp", { ascending: false }).limit(5),
-    needsConsistencyDetail ? supabase.from("daily_plans").select("date, tasks(status)").eq("user_id", userId).gte("date", gridStart).lte("date", date).order("date", { ascending: true }) : Promise.resolve({ data: [] as { date: string; tasks: { status: string }[] }[] }),
-    needsConsistencyDetail ? supabase.from("discipline_scores").select("date, score").eq("user_id", userId).gte("date", gridStart).lte("date", date) : Promise.resolve({ data: [] as { date: string; score: number | null }[] }),
+    supabase.from("daily_plans").select("date, tasks(status)").eq("user_id", userId).gte("date", gridStart).lte("date", date).order("date", { ascending: true }),
+    supabase.from("discipline_scores").select("date, score").eq("user_id", userId).gte("date", gridStart).lte("date", date),
   ]);
 
   const rawTasks = (planRes.data?.tasks as unknown as Task[]) ?? [];
@@ -68,10 +61,6 @@ export default async function MorningDashboard(props: { searchParams?: Promise<{
     if (!a.is_top3 && b.is_top3) return 1;
     return (a.priority ?? 3) - (b.priority ?? 3);
   });
-
-  const totalTasks = tasks.length;
-  const completedTasks = tasks.filter((t) => t.status === "completed").length;
-  const pct = totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0;
 
   // Next class occurrence
   const todayClasses = classesRes.data ?? [];
@@ -144,60 +133,20 @@ export default async function MorningDashboard(props: { searchParams?: Promise<{
         </div>
       </header>
 
-      {/* TODAY'S OVERVIEW */}
-      <section className="overview-ledger">
-        <div className="grid grid-cols-2 sm:grid-cols-4 divide-x divide-y sm:divide-y-0 divide-neutral-800/80 font-mono text-xs">
-          <div className="p-3">
-            <span className="text-[10px] uppercase text-neutral-500 block">Today&apos;s Tasks</span>
-            <span className="text-base font-bold text-neutral-100">
-              {completedTasks}/{totalTasks}
-            </span>
-            <span className="text-[10px] text-neutral-400 ml-1.5 font-mono">({pct}%)</span>
-          </div>
-          <div className="p-3">
-            <span className="text-[10px] uppercase text-neutral-500 block">Streak</span>
-            <span className="text-base font-bold text-emerald-400">🔥 {maxStreak}d</span>
-          </div>
-          <div className="p-3">
-            <span className="text-[10px] uppercase text-neutral-500 block">Next Up</span>
-            <span className="text-xs font-medium text-amber-300 truncate block pt-0.5">
-              {nextItem ?? "None scheduled"}
-            </span>
-          </div>
-          <div className="p-3">
-            <span className="text-[10px] uppercase text-neutral-500 block">Discipline</span>
-            <span className="text-xs text-neutral-300 truncate block pt-0.5">
-              {verdict?.label ?? "Tracking Active"}
-            </span>
-          </div>
-        </div>
-      </section>
-
-      {!section && <section aria-label="Home sections">
-        <SectionBlock href={`/?date=${date}&section=priorities`} title="Today&apos;s Priorities" summary={`${completedTasks} of ${totalTasks} tasks completed`} tone="active" />
-        <SectionBlock href={`/?date=${date}&section=current-work`} title="What I&apos;m Doing Right Now" summary={`${checkInsRes.data?.length ?? 0} ongoing or paused activities`} tone="good" />
-        <SectionBlock href={`/?date=${date}&section=schedule`} title="Schedule" summary={nextItem ?? "Nothing scheduled today"} />
-        <SectionBlock href={`/?date=${date}&section=consistency`} title="Consistency / Streak" summary={`${currentStreak} day current streak`} tone="good" />
-      </section>}
-
-      {section === "priorities" && <section className="space-y-2">
-        <Link href={`/?date=${date}`} className="section-detail-back">← Back to home</Link>
-        <h2 className="section-detail-title">Today&apos;s Priorities</h2>
-        <div className="flex items-center justify-between border-y sm:border border-neutral-800/80 sm:rounded-xl bg-neutral-950/60 p-2">
-          <Link href={`/?date=${shiftDateISO(date, -1)}`} prefetch={false} className="min-h-[40px] px-2 flex items-center text-xs font-mono text-neutral-300" aria-label="Previous day">← Prev</Link>
-          <div className="text-center"><span className="text-sm font-semibold text-neutral-100">{formatDateDisplay(date)}</span>{date === today && <span className="ml-2 text-[9px] font-mono uppercase text-amber-300">Today</span>}</div>
-          <Link href={`/?date=${shiftDateISO(date, 1)}`} prefetch={false} className="min-h-[40px] px-2 flex items-center text-xs font-mono text-neutral-300" aria-label="Next day">Next →</Link>
-        </div>
-        <PlanDayGesture date={date}>
-          <TaskSpreadsheet initialTasks={tasks} goals={goals} selectedDate={date} />
-        </PlanDayGesture>
-      </section>}
-
-      {section === "consistency" && <section className="space-y-2"><Link href={`/?date=${date}`} className="section-detail-back">← Back to home</Link><h2 className="section-detail-title">Consistency / Streak</h2><StreakGrid days={gridDays} currentStreak={currentStreak} longestStreak={maxStreak} /></section>}
-
-      {section === "current-work" && <section className="space-y-2"><Link href={`/?date=${date}`} className="section-detail-back">← Back to home</Link><ActivityLedger initialEntries={(checkInsRes.data ?? []) as ActivityEntry[]} /></section>}
-
-      {section === "schedule" && <section className="space-y-2"><Link href={`/?date=${date}`} className="section-detail-back">← Back to home</Link><h2 className="section-detail-title">Schedule</h2><ScheduleTable items={scheduleItems} selectedDate={date} isHomeView={true} /></section>}
+      <HomeSectionManager
+        date={date}
+        today={today}
+        initialSection={section}
+        tasks={tasks}
+        goals={goals}
+        checkIns={(checkInsRes.data ?? []) as ActivityEntry[]}
+        scheduleItems={scheduleItems}
+        gridDays={gridDays}
+        currentStreak={currentStreak}
+        maxStreak={maxStreak}
+        nextItem={nextItem}
+        verdict={verdict}
+      />
     </div>
   );
 }

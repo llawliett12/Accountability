@@ -51,64 +51,71 @@ export async function fetchDailyMetrics(
 ): Promise<DailyMetricsRow[]> {
   const supabase = await createClient();
 
-  const [{ data: plans }, { data: scores }, { data: sleep }, { data: meditation }, { data: mood }, { data: checkIns }] =
-    await Promise.all([
-      supabase
-        .from("daily_plans")
-        .select("id, date")
-        .eq("user_id", userId)
-        .gte("date", startDate)
-        .lte("date", endDate),
-      supabase
-        .from("discipline_scores")
-        .select("date, score, negative_score")
-        .eq("user_id", userId)
-        .gte("date", startDate)
-        .lte("date", endDate),
-      supabase
-        .from("sleep_logs")
-        .select("date, total_minutes")
-        .eq("user_id", userId)
-        .gte("date", startDate)
-        .lte("date", endDate),
-      supabase
-        .from("meditation_logs")
-        .select("date, happened, duration_min")
-        .eq("user_id", userId)
-        .gte("date", startDate)
-        .lte("date", endDate),
-      supabase
-        .from("mood_logs")
-        .select("date, mood, energy")
-        .eq("user_id", userId)
-        .gte("date", startDate)
-        .lte("date", endDate),
-      supabase
-        .from("check_ins")
-        .select("timestamp, drift_state")
-        .eq("user_id", userId)
-        .gte("timestamp", `${startDate}T00:00:00`)
-        .lte("timestamp", `${endDate}T23:59:59`),
-    ]);
+  const [
+    { data: plans },
+    { data: scores },
+    { data: sleep },
+    { data: meditation },
+    { data: mood },
+    { data: checkIns },
+    { data: sessions },
+  ] = await Promise.all([
+    supabase
+      .from("daily_plans")
+      .select("id, date")
+      .eq("user_id", userId)
+      .gte("date", startDate)
+      .lte("date", endDate),
+    supabase
+      .from("discipline_scores")
+      .select("date, score, negative_score")
+      .eq("user_id", userId)
+      .gte("date", startDate)
+      .lte("date", endDate),
+    supabase
+      .from("sleep_logs")
+      .select("date, total_minutes")
+      .eq("user_id", userId)
+      .gte("date", startDate)
+      .lte("date", endDate),
+    supabase
+      .from("meditation_logs")
+      .select("date, happened, duration_min")
+      .eq("user_id", userId)
+      .gte("date", startDate)
+      .lte("date", endDate),
+    supabase
+      .from("mood_logs")
+      .select("date, mood, energy")
+      .eq("user_id", userId)
+      .gte("date", startDate)
+      .lte("date", endDate),
+    supabase
+      .from("check_ins")
+      .select("timestamp, drift_state")
+      .eq("user_id", userId)
+      .gte("timestamp", `${startDate}T00:00:00`)
+      .lte("timestamp", `${endDate}T23:59:59`),
+    supabase
+      .from("focus_sessions")
+      .select("id, started_at, focused_duration_sec")
+      .eq("user_id", userId)
+      .gte("started_at", `${startDate}T00:00:00`)
+      .lte("started_at", `${endDate}T23:59:59`),
+  ]);
 
   const planIds = (plans ?? []).map((p) => p.id);
   const planIdToDate = new Map((plans ?? []).map((p) => [p.id, p.date as string]));
-
-  const { data: tasks } = planIds.length
-    ? await supabase.from("tasks").select("daily_plan_id, status").in("daily_plan_id", planIds)
-    : { data: [] };
-
-  const { data: sessions } = await supabase
-    .from("focus_sessions")
-    .select("id, started_at, focused_duration_sec")
-    .eq("user_id", userId)
-    .gte("started_at", `${startDate}T00:00:00`)
-    .lte("started_at", `${endDate}T23:59:59`);
-
   const sessionIds = (sessions ?? []).map((s) => s.id);
-  const { data: pauses } = sessionIds.length
-    ? await supabase.from("focus_pauses").select("focus_session_id, reason").in("focus_session_id", sessionIds)
-    : { data: [] };
+
+  const [{ data: tasks }, { data: pauses }] = await Promise.all([
+    planIds.length
+      ? supabase.from("tasks").select("daily_plan_id, status").in("daily_plan_id", planIds)
+      : Promise.resolve({ data: [] as { daily_plan_id: string; status: string }[] }),
+    sessionIds.length
+      ? supabase.from("focus_pauses").select("focus_session_id, reason").in("focus_session_id", sessionIds)
+      : Promise.resolve({ data: [] as { focus_session_id: string; reason: string }[] }),
+  ]);
 
   const sessionIdToDate = new Map(
     (sessions ?? []).map((s) => [s.id, (s.started_at as string).slice(0, 10)])
