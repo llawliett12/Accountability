@@ -130,7 +130,10 @@ export default async function MorningDashboard(props: { searchParams?: Promise<{
             className="min-h-[38px] min-w-[38px] flex items-center justify-center rounded-lg bg-neutral-900 border border-neutral-800 text-neutral-400 hover:text-white transition"
             aria-label="Settings"
           >
-            ⚙
+            <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8} aria-hidden="true">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M10.3 3.2h3.4l.6 2.1c.5.2 1 .5 1.5.8l2.1-.6 1.7 3-1.5 1.6c.1.3.1.7.1 1s0 .7-.1 1l1.5 1.6-1.7 3-2.1-.6c-.5.3-1 .6-1.5.8l-.6 2.1h-3.4l-.6-2.1c-.5-.2-1-.5-1.5-.8l-2.1.6-1.7-3 1.5-1.6a6.4 6.4 0 0 1 0-2L4.8 8.5l1.7-3 2.1.6c.5-.3 1-.6 1.5-.8l.2-2.1Z" />
+              <circle cx="12" cy="12" r="2.75" />
+            </svg>
           </Link>
         </div>
       </header>
