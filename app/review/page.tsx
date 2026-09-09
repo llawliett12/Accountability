@@ -10,6 +10,7 @@ import ReconciliationList from "@/components/ReconciliationList";
 import RunScoringButton from "@/components/RunScoringButton";
 import SleepLogForm from "@/components/SleepLogForm";
 import MeditationLogForm from "@/components/MeditationLogForm";
+import ReviewNotesLedger from "@/components/ReviewNotesLedger";
 
 function formatMinutesToHours(minutes: number | null): string {
   if (minutes === null || minutes <= 0) return "--";
@@ -45,6 +46,7 @@ export default async function ReviewPage() {
     streaksRes,
     todayMetricRes,
     weekDailyScoresRes,
+    reviewNoteRes,
   ] = await Promise.all([
     getOrCreateDailyPlan(today, user.id),
     fetchDailyMetrics(user.id, weekStart, today),
@@ -63,6 +65,12 @@ export default async function ReviewPage() {
       .eq("user_id", user.id)
       .gte("date", weekStart)
       .lte("date", today),
+    supabase
+      .from("review_notes")
+      .select("content")
+      .eq("user_id", user.id)
+      .eq("date", today)
+      .maybeSingle(),
   ]);
 
   // Map of date -> score
@@ -338,10 +346,15 @@ export default async function ReviewPage() {
           <MeditationLogForm />
         </div>
 
+        <div className="space-y-1.5 pt-2">
+          <div className="text-xs font-medium text-neutral-300 font-mono">4. Closing Notes</div>
+          <ReviewNotesLedger date={today} initialContent={reviewNoteRes.data?.content ?? null} />
+        </div>
+
         {/* DISCIPLINE SCORING */}
         <div className="pt-2">
           <div className="flex items-center justify-between border-t border-neutral-800 pt-3">
-            <span className="text-xs font-medium text-neutral-300 font-mono">4. Run Daily Discipline Score</span>
+            <span className="text-xs font-medium text-neutral-300 font-mono">5. Run Daily Discipline Score</span>
             <RunScoringButton date={today} />
           </div>
         </div>
