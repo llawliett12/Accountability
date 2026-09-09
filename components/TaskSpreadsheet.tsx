@@ -219,15 +219,10 @@ export default function TaskSpreadsheet({
     if (touchState.taskId !== task.id) return;
     const diff = touchState.currentX - touchState.startX;
 
-    if (diff > 75) {
-      // Swipe right: toggle complete
-      handleStatusChange(
-        task,
-        task.status === "completed" ? "not_started" : "completed"
-      );
-    } else if (diff < -75) {
-      // Swipe left: delete
-      handleDelete(task.id);
+    if (diff > 75 && task.status !== "completed") {
+      // Swipe right: complete unfinished work. Completion keeps the same
+      // optimistic update, rollback, and haptic feedback as the checkbox.
+      handleStatusChange(task, "completed");
     }
 
     setTouchState({ taskId: null, startX: 0, currentX: 0 });
@@ -395,7 +390,7 @@ export default function TaskSpreadsheet({
                   onTouchMove={(e) => handleTouchMove(task.id, e)}
                   onTouchEnd={() => handleTouchEnd(task)}
                   style={{
-                    transform: isSwiping ? `translateX(${swipeDiff * 0.4}px)` : undefined,
+                    transform: isSwiping ? `translateX(${Math.max(0, swipeDiff) * 0.4}px)` : undefined,
                     transition: isSwiping ? "none" : "transform 0.2s ease",
                   }}
                   className={`group transition-colors ${
@@ -598,9 +593,8 @@ export default function TaskSpreadsheet({
       </div>
 
       {/* Swipe instructions on mobile */}
-      <div className="sm:hidden flex items-center justify-between text-[10px] font-mono text-neutral-500 px-1">
-        <span>↔ Swipe right to complete</span>
-        <span>Swipe left to delete 🗑</span>
+      <div className="sm:hidden flex items-center justify-end text-[10px] font-mono text-neutral-500 px-1">
+        <span>→ Swipe right to complete</span>
       </div>
     </div>
   );
