@@ -60,34 +60,47 @@ export default function GoalsSectionManager({
 
   return (
     <>
-      {/* SECTION BLOCKS LANDING VIEW */}
+      {/* LEVEL 1: MINIMAL GOALS CONTROL CENTER */}
       {!activeSection && (
-        <section aria-label="Goal sections">
+        <section aria-label="Goal navigation" className="space-y-1">
           <SectionBlock
             href="/goals?section=active"
             onClick={() => selectSection("active")}
             title="Active Goals"
-            summary={`${active.length} goals in progress`}
+            summary={`${active.length} goals in progress (Year, Quarter, Month, Week)`}
             tone="active"
           />
           <SectionBlock
             href="/goals?section=today"
             onClick={() => selectSection("today")}
-            title="Today&apos;s Priorities"
-            summary={todayGoals.length ? `${todayGoals.length} goals linked to today` : "No goals linked to today"}
+            title="Today's Goals"
+            summary={
+              todayGoals.length
+                ? `${todayGoals.length} goals linked to today's tasks`
+                : "No goals linked to today"
+            }
+            tone={todayGoals.length ? "active" : "neutral"}
           />
           <SectionBlock
             href="/goals?section=upcoming"
             onClick={() => selectSection("upcoming")}
-            title="Upcoming Deadlines"
-            summary={upcoming.length ? `${upcoming.length} goals with upcoming dates` : "No upcoming goal deadlines"}
+            title="Upcoming"
+            summary={
+              upcoming.length
+                ? `${upcoming.length} goals approaching deadlines${
+                    overdue.length > 0 ? ` · ${overdue.length} overdue` : ""
+                  }`
+                : overdue.length > 0
+                ? `${overdue.length} overdue goals`
+                : "No upcoming goal deadlines"
+            }
             tone={overdue.length ? "warn" : "neutral"}
           />
           <SectionBlock
             href="/goals?section=completed"
             onClick={() => selectSection("completed")}
-            title="Completed Goals"
-            summary={`${recentlyCompleted.length} recently completed`}
+            title="Completed"
+            summary={`${recentlyCompleted.length} recently completed milestones`}
             tone="good"
           />
         </section>

@@ -7,7 +7,7 @@ import {
 } from "@/lib/academics/queries";
 import { todayISO, shiftDateISO } from "@/lib/date";
 import { AcademicsTab } from "@/components/AcademicsHub";
-import AcademicsSectionManager from "@/components/AcademicsSectionManager";
+import AcademicsSectionManager, { type AcademicSection } from "@/components/AcademicsSectionManager";
 
 export default async function AcademicsPage(props: {
   searchParams?: Promise<{ tab?: string; section?: string }>;
@@ -28,7 +28,7 @@ export default async function AcademicsPage(props: {
 
   const validTabs: AcademicsTab[] = ["assessments", "timetable", "deadlines", "performance", "classes"];
   const requestedTab = searchParams?.tab as AcademicsTab | undefined;
-  const requestedSection = searchParams?.section as AcademicsTab | "screenshots" | undefined;
+  const requestedSection = searchParams?.section as AcademicSection | undefined;
   const activeSection = requestedSection ?? (requestedTab && validTabs.includes(requestedTab) ? requestedTab : undefined);
 
   const today = todayISO();
@@ -50,10 +50,9 @@ export default async function AcademicsPage(props: {
 
   return (
     <div className="space-y-5">
-      <header className="flex items-center justify-between">
+      <header className="flex items-center justify-between border-b border-neutral-800/80 pb-3">
         <div>
           <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-white">Academics</h1>
-          <p className="text-xs text-neutral-400">Integrated workspace for tests, timetable &amp; grades</p>
         </div>
       </header>
 

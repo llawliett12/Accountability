@@ -115,7 +115,7 @@ export default async function MorningDashboard(props: { searchParams?: Promise<{
       <header className="flex items-center justify-between pt-1 border-b border-neutral-800/80 pb-3">
         <div>
           <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-white">
-            Daily Command Ledger
+            Home
           </h1>
           <p className="font-mono text-xs text-neutral-400 capitalize">{formattedDate}</p>
         </div>

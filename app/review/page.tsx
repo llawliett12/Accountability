@@ -143,7 +143,7 @@ export default async function ReviewPage(props: { searchParams?: Promise<{ date?
   return (
     <div className="space-y-6 pb-6">
       <header className="border-b border-neutral-800/80 pb-3">
-        <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-white">Review Ledger</h1>
+        <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-white">Review</h1>
         <div className="mt-2 flex items-center justify-between font-mono text-xs text-neutral-400">
           <Link href={`/review?date=${addDays(selectedDate, -1)}`} className="min-h-10 flex items-center px-1">← Prev</Link>
           <span>{selectedDate}</span>

@@ -14,7 +14,17 @@ import type { Task } from "@/lib/types";
 import type { DailyMetricsRow } from "@/lib/analytics/queries";
 import { DEFAULT_TIMEZONE } from "@/lib/date";
 
-export type ReviewSection = "sleep" | "food" | "activities" | "weekly" | "academics" | "night" | "meditation" | "notes";
+export type ReviewSection =
+  | "activities"
+  | "daily-review"
+  | "weekly"
+  | "health"
+  | "night"
+  | "sleep"
+  | "food"
+  | "meditation"
+  | "notes"
+  | "academics";
 
 function formatMinutesToHours(minutes: number | null): string {
   if (minutes === null || minutes <= 0) return "--";
@@ -111,63 +121,83 @@ export default function ReviewSectionManager({
 
   return (
     <>
-      {/* SECTION BLOCKS LANDING VIEW */}
+      {/* LEVEL 1: MINIMAL REVIEW CONTROL CENTER */}
       {!activeSection && (
-        <section aria-label="Review sections">
-          <SectionBlock
-            href={`/review?date=${selectedDate}&section=sleep`}
-            onClick={() => selectSection("sleep")}
-            title="Sleep & Recovery"
-            summary={avgSleepMinutes ? `${formatMinutesToHours(avgSleepMinutes)} average this week` : "No sleep recorded yet"}
-            tone="good"
-          />
-          <SectionBlock
-            href={`/review?date=${selectedDate}&section=food`}
-            onClick={() => selectSection("food")}
-            title="Eating Habits"
-            summary={foodHabitsData ? "Meals recorded for this day" : "No meals recorded for this day"}
-          />
-          <SectionBlock
-            href={`/review?date=${selectedDate}&section=activities`}
-            onClick={() => selectSection("activities")}
-            title="What I Did"
-            summary={`${completedActivities.length} completed activities`}
-            tone="good"
-          />
-          <SectionBlock
-            href={`/review?date=${selectedDate}&section=weekly`}
-            onClick={() => selectSection("weekly")}
-            title="Weekly Performance"
-            summary={`${tasksCompleted}/${tasksPlanned} tasks completed in the last 7 days`}
-            tone="active"
-          />
-          <SectionBlock
-            href={`/review?date=${selectedDate}&section=academics`}
-            onClick={() => selectSection("academics")}
-            title="Academic Status"
-            summary={averageAcademicPct !== null ? `${averageAcademicPct}% assessment average` : "No scored assessments yet"}
-          />
-          <SectionBlock
-            href={`/review?date=${selectedDate}&section=night`}
-            onClick={() => selectSection("night")}
-            title="Night Check-in"
-            summary={`${tasksToReconcile.length} open tasks to reconcile`}
-            tone={tasksToReconcile.length > 0 ? "warn" : "neutral"}
-          />
-          <SectionBlock
-            href={`/review?date=${selectedDate}&section=meditation`}
-            onClick={() => selectSection("meditation")}
-            title="Meditation"
-            summary={meditationData?.happened ? "Recorded for this day" : "Not recorded for this day"}
-            tone={meditationData?.happened ? "good" : "neutral"}
-          />
-          <SectionBlock
-            href={`/review?date=${selectedDate}&section=notes`}
-            onClick={() => selectSection("notes")}
-            title="Notes"
-            summary={reviewNoteContent ? "Closing note saved" : "No closing note yet"}
-          />
-        </section>
+        <div className="space-y-4">
+          {/* TODAY'S COMPACT REVIEW SUMMARY STRIP */}
+          <section className="overview-ledger rounded-xl border border-neutral-800/80">
+            <div className="grid grid-cols-2 sm:grid-cols-4 divide-x divide-y sm:divide-y-0 divide-neutral-800/80 font-mono text-xs">
+              <div className="p-3">
+                <span className="text-[10px] uppercase text-neutral-500 block">Tasks Done</span>
+                <span className="text-base font-bold text-neutral-100">
+                  {tasksCompleted}/{tasksPlanned}
+                </span>
+                <span className="text-[10px] text-neutral-400 ml-1.5 font-mono">
+                  ({tasksPlanned > 0 ? Math.round((tasksCompleted / tasksPlanned) * 100) : 0}%)
+                </span>
+              </div>
+              <div className="p-3">
+                <span className="text-[10px] uppercase text-neutral-500 block">Focus / Work</span>
+                <span className="text-base font-bold text-amber-300">
+                  {formatMinutesToHours(totalFocusMinutes)}
+                </span>
+              </div>
+              <div className="p-3">
+                <span className="text-[10px] uppercase text-neutral-500 block">Discipline Score</span>
+                <span className="text-base font-bold text-emerald-400">
+                  {todayScore !== null ? `${todayScore}` : "--"}
+                </span>
+                <span className="text-[10px] text-neutral-400 ml-1 font-mono">/ 100</span>
+              </div>
+              <div className="p-3">
+                <span className="text-[10px] uppercase text-neutral-500 block">Habits</span>
+                <span className="text-xs text-neutral-300 truncate block pt-0.5">
+                  {avgSleepMinutes ? `${formatMinutesToHours(avgSleepMinutes)} sleep` : "Sleep"} · {meditationData?.happened ? "🧘 Did" : "🧘 None"}
+                </span>
+              </div>
+            </div>
+          </section>
+
+          {/* 4 CLEAR NAVIGATION DOORS */}
+          <section aria-label="Review navigation" className="space-y-1">
+            <SectionBlock
+              href={`/review?date=${selectedDate}&section=activities`}
+              onClick={() => selectSection("activities")}
+              title="What I Did"
+              summary={`${completedActivities.length} completed activities · Start, end & duration`}
+              tone={completedActivities.length > 0 ? "good" : "neutral"}
+            />
+            <SectionBlock
+              href={`/review?date=${selectedDate}&section=daily-review`}
+              onClick={() => selectSection("daily-review")}
+              title="Daily Review"
+              summary={
+                tasksToReconcile.length > 0
+                  ? `${tasksToReconcile.length} open tasks to reconcile · Daily discipline score`
+                  : todayScore !== null
+                  ? `Discipline score: ${todayScore} / 100 · Day reconciled`
+                  : "Tasks reconciled · Ready to run discipline score"
+              }
+              tone={tasksToReconcile.length > 0 ? "warn" : "good"}
+            />
+            <SectionBlock
+              href={`/review?date=${selectedDate}&section=weekly`}
+              onClick={() => selectSection("weekly")}
+              title="Weekly Performance"
+              summary={`${tasksCompleted}/${tasksPlanned} tasks last 7 days · 🔥 ${bestStreak}d streak`}
+              tone="active"
+            />
+            <SectionBlock
+              href={`/review?date=${selectedDate}&section=health`}
+              onClick={() => selectSection("health")}
+              title="Health & Habits"
+              summary={`${
+                avgSleepMinutes ? `${formatMinutesToHours(avgSleepMinutes)} avg sleep` : "Sleep"
+              }, meals, meditation & closing notes`}
+              tone="good"
+            />
+          </section>
+        </div>
       )}
 
       {/* SECTION DETAIL: WEEKLY PERFORMANCE */}
@@ -380,10 +410,12 @@ export default function ReviewSectionManager({
             <div className="flex items-center justify-between border-b border-neutral-800/80 pb-2">
               <div className="flex items-center gap-2">
                 <span className="font-mono text-xs font-semibold uppercase tracking-wider text-neutral-300">
-                  {activeSection === "night"
-                    ? "Night Check-in"
+                  {activeSection === "daily-review" || activeSection === "night"
+                    ? "Daily Review & Reconciliation"
                     : activeSection === "activities"
                     ? "What I Did"
+                    : activeSection === "health"
+                    ? "Health & Habits"
                     : activeSection === "sleep"
                     ? "Sleep & Recovery"
                     : activeSection === "food"
@@ -401,27 +433,45 @@ export default function ReviewSectionManager({
               )}
             </div>
 
-            {/* TASK RECONCILIATION */}
-            {activeSection === "night" && (
-              <div className="space-y-1.5">
-                <div className="text-xs font-medium text-neutral-300 font-mono">1. Reconcile Open Tasks</div>
-                <ReconciliationList tasks={tasksToReconcile} />
+            {/* TASK RECONCILIATION & DISCIPLINE SCORING */}
+            {(activeSection === "daily-review" || activeSection === "night") && (
+              <div className="space-y-4">
+                <div className="space-y-1.5">
+                  <div className="text-xs font-medium text-neutral-300 font-mono">1. Reconcile Open Tasks</div>
+                  <ReconciliationList tasks={tasksToReconcile} />
+                </div>
+                <div className="flex items-center justify-between border-t border-neutral-800 pt-3">
+                  <span className="text-xs font-medium text-neutral-300 font-mono">2. Daily Discipline Score</span>
+                  <RunScoringButton date={selectedDate} />
+                </div>
+                <div className="space-y-1.5 pt-2 border-t border-neutral-800">
+                  <div className="text-xs font-medium text-neutral-300 font-mono">3. Day Closing Note</div>
+                  <ReviewNotesLedger date={selectedDate} initialContent={reviewNoteContent} />
+                </div>
               </div>
             )}
 
             {/* SLEEP LOG FORM */}
-            {activeSection === "sleep" && (
+            {(activeSection === "health" || activeSection === "sleep") && (
               <div className="space-y-1.5 pt-2">
-                <div className="text-xs font-medium text-neutral-300 font-mono">2. Log Sleep</div>
+                <div className="text-xs font-medium text-neutral-300 font-mono">Sleep &amp; Recovery</div>
                 <SleepLogForm />
                 <SleepPeriodRows initialPeriods={sleepPeriods} />
               </div>
             )}
 
-            {/* MEDITATION LOG FORM */}
-            {activeSection === "meditation" && (
+            {/* FOOD HABITS */}
+            {(activeSection === "health" || activeSection === "food") && (
               <div className="space-y-1.5 pt-2">
-                <div className="text-xs font-medium text-neutral-300 font-mono">3. Log Meditation &amp; Habits</div>
+                <div className="text-xs font-medium text-neutral-300 font-mono">Eating Habits</div>
+                <FoodHabitLedger date={selectedDate} initialMeals={foodHabitsData} />
+              </div>
+            )}
+
+            {/* MEDITATION LOG FORM */}
+            {(activeSection === "health" || activeSection === "meditation") && (
+              <div className="space-y-1.5 pt-2">
+                <div className="text-xs font-medium text-neutral-300 font-mono">Meditation &amp; Habits</div>
                 <MeditationLogForm
                   date={selectedDate}
                   initialHappened={meditationData?.happened ?? null}
@@ -431,18 +481,10 @@ export default function ReviewSectionManager({
             )}
 
             {/* NOTES */}
-            {activeSection === "notes" && (
+            {(activeSection === "health" || activeSection === "notes") && (
               <div className="space-y-1.5 pt-2">
-                <div className="text-xs font-medium text-neutral-300 font-mono">4. Closing Notes</div>
+                <div className="text-xs font-medium text-neutral-300 font-mono">Closing Notes</div>
                 <ReviewNotesLedger date={selectedDate} initialContent={reviewNoteContent} />
-              </div>
-            )}
-
-            {/* FOOD HABITS */}
-            {activeSection === "food" && (
-              <div className="space-y-1.5 pt-2">
-                <div className="text-xs font-medium text-neutral-300 font-mono">5. Food Habits</div>
-                <FoodHabitLedger date={selectedDate} initialMeals={foodHabitsData} />
               </div>
             )}
 
@@ -499,16 +541,6 @@ export default function ReviewSectionManager({
                     </table>
                   </div>
                 )}
-              </div>
-            )}
-
-            {/* DISCIPLINE SCORING */}
-            {activeSection === "night" && (
-              <div className="pt-2">
-                <div className="flex items-center justify-between border-t border-neutral-800 pt-3">
-                  <span className="text-xs font-medium text-neutral-300 font-mono">6. Run Daily Discipline Score</span>
-                  <RunScoringButton date={selectedDate} />
-                </div>
               </div>
             )}
           </section>

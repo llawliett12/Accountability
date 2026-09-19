@@ -11,7 +11,7 @@ import StreakGrid from "@/components/StreakGrid";
 import PlanDayGesture from "@/components/PlanDayGesture";
 import SectionBlock from "@/components/SectionBlock";
 
-export type HomeSection = "priorities" | "current-work" | "schedule" | "consistency";
+export type HomeSection = "priorities" | "current-work" | "schedule" | "progress" | "consistency";
 
 interface HomeSectionManagerProps {
   date: string;
@@ -78,70 +78,87 @@ export default function HomeSectionManager({
 
   const totalTasks = tasks.length;
   const completedTasks = tasks.filter((t) => t.status === "completed").length;
+  const remainingTasks = totalTasks - completedTasks;
+  const top3Remaining = tasks.filter((t) => t.is_top3 && t.status !== "completed").length;
   const pct = totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0;
+  const activeWork = checkIns.find((c) => c.status === "ongoing") ?? checkIns[0];
 
   return (
     <>
-      {/* TODAY'S OVERVIEW */}
-      <section className="overview-ledger">
-        <div className="grid grid-cols-2 sm:grid-cols-4 divide-x divide-y sm:divide-y-0 divide-neutral-800/80 font-mono text-xs">
-          <div className="p-3">
-            <span className="text-[10px] uppercase text-neutral-500 block">Today&apos;s Tasks</span>
-            <span className="text-base font-bold text-neutral-100">
-              {completedTasks}/{totalTasks}
-            </span>
-            <span className="text-[10px] text-neutral-400 ml-1.5 font-mono">({pct}%)</span>
-          </div>
-          <div className="p-3">
-            <span className="text-[10px] uppercase text-neutral-500 block">Streak</span>
-            <span className="text-base font-bold text-emerald-400">🔥 {maxStreak}d</span>
-          </div>
-          <div className="p-3">
-            <span className="text-[10px] uppercase text-neutral-500 block">Next Up</span>
-            <span className="text-xs font-medium text-amber-300 truncate block pt-0.5">
-              {nextItem ?? "None scheduled"}
-            </span>
-          </div>
-          <div className="p-3">
-            <span className="text-[10px] uppercase text-neutral-500 block">Discipline</span>
-            <span className="text-xs text-neutral-300 truncate block pt-0.5">
-              {verdict?.label ?? "Tracking Active"}
-            </span>
-          </div>
-        </div>
-      </section>
-
-      {/* SECTION BLOCKS LANDING VIEW */}
+      {/* LEVEL 1: MINIMAL CONTROL CENTER */}
       {!activeSection && (
-        <section aria-label="Home sections">
-          <SectionBlock
-            href={`/?date=${date}&section=priorities`}
-            onClick={() => selectSection("priorities")}
-            title="Today&apos;s Priorities"
-            summary={`${completedTasks} of ${totalTasks} tasks completed`}
-            tone="active"
-          />
-          <SectionBlock
-            href={`/?date=${date}&section=current-work`}
-            onClick={() => selectSection("current-work")}
-            title="What I&apos;m Doing Right Now"
-            summary={`${checkIns.length} ongoing or paused activities`}
-            tone="good"
-          />
-          <SectionBlock
-            href={`/?date=${date}&section=schedule`}
-            onClick={() => selectSection("schedule")}
-            title="Schedule"
-            summary={nextItem ?? "Nothing scheduled today"}
-          />
-          <SectionBlock
-            href={`/?date=${date}&section=consistency`}
-            onClick={() => selectSection("consistency")}
-            title="Consistency / Streak"
-            summary={`${currentStreak} day current streak`}
-            tone="good"
-          />
-        </section>
+        <div className="space-y-4">
+          {/* TODAY'S OVERVIEW STRIP */}
+          <section className="overview-ledger rounded-xl border border-neutral-800/80">
+            <div className="grid grid-cols-2 sm:grid-cols-4 divide-x divide-y sm:divide-y-0 divide-neutral-800/80 font-mono text-xs">
+              <div className="p-3">
+                <span className="text-[10px] uppercase text-neutral-500 block">Today&apos;s Tasks</span>
+                <span className="text-base font-bold text-neutral-100">
+                  {completedTasks}/{totalTasks}
+                </span>
+                <span className="text-[10px] text-neutral-400 ml-1.5 font-mono">({pct}%)</span>
+              </div>
+              <div className="p-3">
+                <span className="text-[10px] uppercase text-neutral-500 block">Streak</span>
+                <span className="text-base font-bold text-emerald-400">🔥 {maxStreak}d</span>
+              </div>
+              <div className="p-3">
+                <span className="text-[10px] uppercase text-neutral-500 block">Next Up</span>
+                <span className="text-xs font-medium text-amber-300 truncate block pt-0.5">
+                  {nextItem ?? "None scheduled"}
+                </span>
+              </div>
+              <div className="p-3">
+                <span className="text-[10px] uppercase text-neutral-500 block">Discipline</span>
+                <span className="text-xs text-neutral-300 truncate block pt-0.5">
+                  {verdict?.label ?? "Tracking Active"}
+                </span>
+              </div>
+            </div>
+          </section>
+
+          {/* 4 MEANINGFUL NAVIGATION DOORS */}
+          <section aria-label="Home navigation" className="space-y-1">
+            <SectionBlock
+              href={`/?date=${date}&section=priorities`}
+              onClick={() => selectSection("priorities")}
+              title="Priorities"
+              summary={
+                remainingTasks > 0
+                  ? `${remainingTasks} remaining${top3Remaining > 0 ? ` · ${top3Remaining} Top 3` : ""}`
+                  : totalTasks > 0
+                  ? "All tasks completed today"
+                  : "No tasks planned yet"
+              }
+              tone={remainingTasks > 0 ? "active" : "good"}
+            />
+            <SectionBlock
+              href={`/?date=${date}&section=current-work`}
+              onClick={() => selectSection("current-work")}
+              title="Current Work"
+              summary={
+                activeWork
+                  ? `${activeWork.status === "ongoing" ? "● Ongoing" : "⏸ Paused"}: ${activeWork.actual_activity}`
+                  : "Idle · tap to start"
+              }
+              tone={activeWork ? (activeWork.status === "ongoing" ? "good" : "warn") : "neutral"}
+            />
+            <SectionBlock
+              href={`/?date=${date}&section=schedule`}
+              onClick={() => selectSection("schedule")}
+              title="Schedule"
+              summary={nextItem ? `Next: ${nextItem}` : "Nothing scheduled today"}
+              tone="neutral"
+            />
+            <SectionBlock
+              href={`/?date=${date}&section=progress`}
+              onClick={() => selectSection("progress")}
+              title="Progress"
+              summary={`🔥 ${currentStreak}d streak · ${verdict?.label ?? "Daily consistency"}`}
+              tone="good"
+            />
+          </section>
+        </div>
       )}
 
       {/* SECTION DETAIL: TODAY'S PRIORITIES */}
@@ -187,8 +204,8 @@ export default function HomeSectionManager({
         </section>
       )}
 
-      {/* SECTION DETAIL: CONSISTENCY / STREAK */}
-      {activeSection === "consistency" && (
+      {/* SECTION DETAIL: PROGRESS & CONSISTENCY */}
+      {(activeSection === "progress" || activeSection === "consistency") && (
         <section className="space-y-2">
           <Link
             href={`/?date=${date}`}
@@ -201,7 +218,7 @@ export default function HomeSectionManager({
           >
             ← Back to home
           </Link>
-          <h2 className="section-detail-title">Consistency / Streak</h2>
+          <h2 className="section-detail-title">Progress &amp; Consistency</h2>
           <StreakGrid days={gridDays} currentStreak={currentStreak} longestStreak={maxStreak} />
         </section>
       )}
