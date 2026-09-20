@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useState, useEffect, useTransition } from "react";
+import { useRouter } from "next/navigation";
 import type { Note } from "@/lib/notes/types";
 import { createNote, updateNote, deleteNote } from "@/lib/notes/actions";
 import TrashIcon from "@/components/icons/TrashIcon";
@@ -14,11 +15,22 @@ interface NotesSectionProps {
 
 export default function NotesSection({
   title = "Notes",
-  notes: initialNotes,
+  notes: initialNotes = [],
   courseId,
   category = "general",
 }: NotesSectionProps) {
+  const router = useRouter();
   const [notes, setNotes] = useState<Note[]>(initialNotes);
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setNotes((curr) => {
+      const serverIds = new Set(initialNotes.map((n) => n.id));
+      const localOnly = curr.filter((n) => !serverIds.has(n.id));
+      return [...localOnly, ...initialNotes];
+    });
+  }, [initialNotes]);
+
   const [isAdding, setIsAdding] = useState(false);
   const [newContent, setNewContent] = useState("");
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -53,6 +65,7 @@ export default function NotesSection({
           category,
         });
         setNotes((prev) => prev.map((n) => (n.id === tempNote.id ? saved : n)));
+        router.refresh();
       } catch (err) {
         console.error("Failed to save note:", err);
         setNotes((prev) => prev.filter((n) => n.id !== tempNote.id));
@@ -78,6 +91,7 @@ export default function NotesSection({
     startTransition(async () => {
       try {
         await updateNote(noteId, trimmed, courseId, category);
+        router.refresh();
       } catch (err) {
         console.error("Failed to update note:", err);
       }
@@ -90,6 +104,7 @@ export default function NotesSection({
     startTransition(async () => {
       try {
         await deleteNote(noteId, courseId, category);
+        router.refresh();
       } catch (err) {
         console.error("Failed to delete note:", err);
       }

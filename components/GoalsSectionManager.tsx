@@ -1,8 +1,10 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useState, useEffect, useTransition } from "react";
+import { useRouter } from "next/navigation";
 import GoalsTable, { type GoalRowItem } from "@/components/GoalsTable";
-import { createGoal } from "@/lib/goals/actions";
+import { createGoal, toggleGoalTop3, updateGoal, deleteGoal } from "@/lib/goals/actions";
+import type { GoalStatus } from "@/lib/goals/types";
 import type { GoalWithMeta } from "@/lib/goals/queries";
 import NotesSection from "@/components/NotesSection";
 import type { Note } from "@/lib/notes/types";
@@ -31,8 +33,18 @@ export default function GoalsSectionManager({
   courses = [],
   goalNotes = [],
 }: GoalsSectionManagerProps) {
+  const router = useRouter();
   const [filter, setFilter] = useState<GoalFilter>("active");
   const [goalsList, setGoalsList] = useState<GoalRowItem[]>(allGoals);
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setGoalsList((curr) => {
+      const serverIds = new Set(allGoals.map((g) => g.id));
+      const localOnly = curr.filter((g) => !serverIds.has(g.id));
+      return [...localOnly, ...allGoals];
+    });
+  }, [allGoals]);
 
   // Quick Add state
   const [showQuickAdd, setShowQuickAdd] = useState(false);
@@ -77,8 +89,63 @@ export default function GoalsSectionManager({
         setNewDueDate("");
         setNewPriority(3);
         setShowQuickAdd(false);
+        router.refresh();
       } catch (err) {
         setAddError(err instanceof Error ? err.message : "Failed to create goal");
+      }
+    });
+  };
+
+  const handleToggleTop3 = (goalId: string, current: boolean) => {
+    setGoalsList((prev) =>
+      prev.map((g) => (g.id === goalId ? { ...g, is_top3: !current } : g))
+    );
+    startTransition(async () => {
+      try {
+        await toggleGoalTop3(goalId, !current);
+        router.refresh();
+      } catch (err) {
+        console.error("Failed to toggle top 3", err);
+      }
+    });
+  };
+
+  const handleStatusChange = (goalId: string, newStatus: GoalStatus) => {
+    setGoalsList((prev) =>
+      prev.map((g) =>
+        g.id === goalId
+          ? {
+              ...g,
+              status: newStatus,
+              computedProgress: newStatus === "completed" ? 100 : g.computedProgress,
+            }
+          : g
+      )
+    );
+    startTransition(async () => {
+      try {
+        await updateGoal(goalId, { status: newStatus });
+        router.refresh();
+      } catch (err) {
+        console.error("Failed to update status", err);
+      }
+    });
+  };
+
+  const handleDeleteGoal = (goalId: string, title: string) => {
+    if (!confirm(`Are you sure you want to delete goal: "${title}"?\nThis action cannot be undone.`)) {
+      return;
+    }
+    const prevList = goalsList;
+    setGoalsList((prev) => prev.filter((g) => g.id !== goalId));
+    startTransition(async () => {
+      try {
+        await deleteGoal(goalId);
+        router.refresh();
+      } catch (err) {
+        console.error("Failed to delete goal", err);
+        setGoalsList(prevList);
+        alert("Failed to delete goal: " + (err instanceof Error ? err.message : String(err)));
       }
     });
   };
@@ -235,8 +302,11 @@ export default function GoalsSectionManager({
 
       {/* 3. THE ONE ULTIMATE GLOBAL GOALS TABLE */}
       <GoalsTable
-        initialGoals={filteredGoals}
+        goals={filteredGoals}
         courseCodeMap={courseCodeMap}
+        onToggleTop3={handleToggleTop3}
+        onStatusChange={handleStatusChange}
+        onDeleteGoal={handleDeleteGoal}
       />
 
       {/* 4. GOAL NOTES */}

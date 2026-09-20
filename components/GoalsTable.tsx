@@ -28,25 +28,38 @@ const PRIORITY_BADGES: Record<number, { label: string; class: string }> = {
   5: { label: "P5 · Low", class: "bg-neutral-800 text-neutral-500 border-neutral-700" },
 };
 
-export default function GoalsTable({
-  initialGoals,
-  courseCodeMap = {},
-}: {
-  initialGoals: GoalRowItem[];
+export interface GoalsTableProps {
+  initialGoals?: GoalRowItem[];
+  goals?: GoalRowItem[];
   courseCodeMap?: Record<string, string>;
-}) {
-  const [goals, setGoals] = useState<GoalRowItem[]>(initialGoals);
-  const [prevInitial, setPrevInitial] = useState(initialGoals);
-  if (prevInitial !== initialGoals) {
-    setPrevInitial(initialGoals);
-    setGoals(initialGoals);
-  }
+  onToggleTop3?: (goalId: string, current: boolean) => void;
+  onStatusChange?: (goalId: string, newStatus: GoalStatus) => void;
+  onDeleteGoal?: (goalId: string, title: string) => void;
+}
+
+export default function GoalsTable({
+  initialGoals = [],
+  goals: controlledGoals,
+  courseCodeMap = {},
+  onToggleTop3,
+  onStatusChange,
+  onDeleteGoal,
+}: GoalsTableProps) {
+  const [localGoals, setLocalGoals] = useState<GoalRowItem[]>(initialGoals);
+
+  // Synchronize initialGoals safely if uncontrolled
+  const isControlled = controlledGoals !== undefined;
+  const goals = isControlled ? controlledGoals : localGoals;
 
   const [pending, startTransition] = useTransition();
 
   const handleToggleTop3 = (goalId: string, current: boolean) => {
-    // Optimistic UI update
-    setGoals((prev) =>
+    if (onToggleTop3) {
+      onToggleTop3(goalId, current);
+      return;
+    }
+
+    setLocalGoals((prev) =>
       prev.map((g) => (g.id === goalId ? { ...g, is_top3: !current } : g))
     );
 
@@ -60,7 +73,12 @@ export default function GoalsTable({
   };
 
   const handleStatusChange = (goalId: string, newStatus: GoalStatus) => {
-    setGoals((prev) =>
+    if (onStatusChange) {
+      onStatusChange(goalId, newStatus);
+      return;
+    }
+
+    setLocalGoals((prev) =>
       prev.map((g) =>
         g.id === goalId
           ? {
@@ -82,20 +100,24 @@ export default function GoalsTable({
   };
 
   const handleDelete = (goalId: string, title: string) => {
+    if (onDeleteGoal) {
+      onDeleteGoal(goalId, title);
+      return;
+    }
+
     if (!confirm(`Are you sure you want to delete goal: "${title}"?\nThis action cannot be undone.`)) {
       return;
     }
 
-    // Optimistic local deletion
-    const prevGoals = goals;
-    setGoals((prev) => prev.filter((g) => g.id !== goalId));
+    const prevGoals = localGoals;
+    setLocalGoals((prev) => prev.filter((g) => g.id !== goalId));
 
     startTransition(async () => {
       try {
         await deleteGoal(goalId);
       } catch (err) {
         console.error("Failed to delete goal", err);
-        setGoals(prevGoals);
+        setLocalGoals(prevGoals);
         alert("Failed to delete goal: " + (err instanceof Error ? err.message : String(err)));
       }
     });

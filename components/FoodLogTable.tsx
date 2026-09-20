@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
 import { addFoodEntry, deleteFoodEntry } from "@/lib/health/actions";
 import type { FoodEntry } from "@/lib/health/types";
 import TrashIcon from "@/components/icons/TrashIcon";
@@ -19,6 +20,7 @@ export default function FoodLogTable({
   date: string;
   initialEntries?: FoodEntry[];
 }) {
+  const router = useRouter();
   const [entries, setEntries] = useState<FoodEntry[]>(initialEntries);
   const [time, setTime] = useState(getCurrentTimeStr());
   const [food, setFood] = useState("");
@@ -49,6 +51,7 @@ export default function FoodLogTable({
           date,
           entry: newEntry,
         });
+        router.refresh();
       } catch (err: unknown) {
         // Rollback
         setEntries((prev) => prev.filter((item) => item.id !== newEntry.id));
@@ -68,6 +71,7 @@ export default function FoodLogTable({
           date,
           entryId: id,
         });
+        router.refresh();
       } catch (err: unknown) {
         if (entryToDelete) {
           setEntries((prev) => [...prev, entryToDelete]);

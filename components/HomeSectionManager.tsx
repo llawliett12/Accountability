@@ -93,91 +93,89 @@ export default function HomeSectionManager({
   return (
     <>
       {/* LEVEL 1: MINIMAL CONTROL CENTER */}
-      {!activeSection && (
-        <div className="space-y-4">
-          {/* HEADER: DATE */}
-          <header className="flex items-center justify-between border-b border-neutral-800/80 pb-3">
-            <div>
-              <h1 className="text-xl font-bold tracking-tight text-neutral-100 font-mono">Home</h1>
-              <p className="text-xs text-neutral-400 font-mono mt-0.5">
-                {formatDateDisplay(date)}
-                {date === today && (
-                  <span className="ml-2 inline-flex items-center rounded-md bg-emerald-950/70 border border-emerald-800/60 px-1.5 py-0.5 text-[10px] font-medium text-emerald-400">
-                    Today
-                  </span>
-                )}
-              </p>
-            </div>
-
-            <div className="flex items-center gap-1.5">
-              <Link
-                href={`/?date=${shiftDateISO(date, -1)}`}
-                className="rounded-lg border border-neutral-800 bg-neutral-900/60 px-2 py-1 text-xs text-neutral-400 hover:text-neutral-200 transition-colors"
-                aria-label="Previous day"
-              >
-                &larr;
-              </Link>
-              {date !== today && (
-                <Link
-                  href="/"
-                  className="rounded-lg border border-neutral-800 bg-neutral-900/60 px-2 py-1 text-xs text-neutral-300 hover:text-white transition-colors font-mono text-[10px]"
-                >
+      <div className={activeSection ? "hidden" : "space-y-4"}>
+        {/* HEADER: DATE */}
+        <header className="flex items-center justify-between border-b border-neutral-800/80 pb-3">
+          <div>
+            <h1 className="text-xl font-bold tracking-tight text-neutral-100 font-mono">Home</h1>
+            <p className="text-xs text-neutral-400 font-mono mt-0.5">
+              {formatDateDisplay(date)}
+              {date === today && (
+                <span className="ml-2 inline-flex items-center rounded-md bg-emerald-950/70 border border-emerald-800/60 px-1.5 py-0.5 text-[10px] font-medium text-emerald-400">
                   Today
-                </Link>
+                </span>
               )}
+            </p>
+          </div>
+
+          <div className="flex items-center gap-1.5">
+            <Link
+              href={`/?date=${shiftDateISO(date, -1)}`}
+              className="rounded-lg border border-neutral-800 bg-neutral-900/60 px-2 py-1 text-xs text-neutral-400 hover:text-neutral-200 transition-colors"
+              aria-label="Previous day"
+            >
+              &larr;
+            </Link>
+            {date !== today && (
               <Link
-                href={`/?date=${shiftDateISO(date, 1)}`}
-                className="rounded-lg border border-neutral-800 bg-neutral-900/60 px-2 py-1 text-xs text-neutral-400 hover:text-neutral-200 transition-colors"
-                aria-label="Next day"
+                href="/"
+                className="rounded-lg border border-neutral-800 bg-neutral-900/60 px-2 py-1 text-xs text-neutral-300 hover:text-white transition-colors font-mono text-[10px]"
               >
-                &rarr;
+                Today
               </Link>
+            )}
+            <Link
+              href={`/?date=${shiftDateISO(date, 1)}`}
+              className="rounded-lg border border-neutral-800 bg-neutral-900/60 px-2 py-1 text-xs text-neutral-400 hover:text-neutral-200 transition-colors"
+              aria-label="Next day"
+            >
+              &rarr;
+            </Link>
+          </div>
+        </header>
+
+        {/* ACTIVE WORK NOTIFICATION (if work session is running) */}
+        {ongoingWork && (
+          <div className="rounded-xl border border-emerald-800/60 bg-emerald-950/30 p-2.5 flex items-center justify-between text-xs">
+            <div className="flex items-center gap-2 truncate">
+              <span className="relative flex h-2 w-2">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+              </span>
+              <span className="font-mono text-emerald-300 font-medium truncate">
+                {ongoingWork.status === "paused" ? "⏸ Paused: " : "● Ongoing: "}
+                {ongoingWork.actual_activity}
+              </span>
             </div>
-          </header>
+            <Link
+              href="/now"
+              className="font-mono text-[10px] text-emerald-400 hover:text-emerald-200 underline whitespace-nowrap ml-2"
+            >
+              Focus Session &rarr;
+            </Link>
+          </div>
+        )}
 
-          {/* ACTIVE WORK NOTIFICATION (if work session is running) */}
-          {ongoingWork && (
-            <div className="rounded-xl border border-emerald-800/60 bg-emerald-950/30 p-2.5 flex items-center justify-between text-xs">
-              <div className="flex items-center gap-2 truncate">
-                <span className="relative flex h-2 w-2">
-                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                  <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
-                </span>
-                <span className="font-mono text-emerald-300 font-medium truncate">
-                  {ongoingWork.status === "paused" ? "⏸ Paused: " : "● Ongoing: "}
-                  {ongoingWork.actual_activity}
-                </span>
-              </div>
-              <Link
-                href="/now"
-                className="font-mono text-[10px] text-emerald-400 hover:text-emerald-200 underline whitespace-nowrap ml-2"
-              >
-                Focus Session &rarr;
-              </Link>
-            </div>
-          )}
+        {/* 2. LARGE NEXT IN LINE */}
+        <NextInLineCard item={nextInLine} />
 
-          {/* 2. LARGE NEXT IN LINE */}
-          <NextInLineCard item={nextInLine} />
+        {/* 3. WEEKLY TIMETABLE REFERENCE (SHOWN MON-FRI ONLY; HIDDEN ON SAT-SUN) */}
+        {isWeekdayActive && (
+          <WeeklyTimetableReference
+            imageUrl={weeklyTimetableImageUrl ?? null}
+            items={academicSchedule}
+          />
+        )}
 
-          {/* 3. WEEKLY TIMETABLE REFERENCE (SHOWN MON-FRI ONLY; HIDDEN ON SAT-SUN) */}
-          {isWeekdayActive && (
-            <WeeklyTimetableReference
-              imageUrl={weeklyTimetableImageUrl ?? null}
-              items={academicSchedule}
-            />
-          )}
+        {/* 4. TOP 3 GOALS */}
+        <HomeTop3Goals goals={top3Goals} courseCodeMap={courseCodeMap} />
 
-          {/* 4. TOP 3 GOALS */}
-          <HomeTop3Goals goals={top3Goals} courseCodeMap={courseCodeMap} />
+        {/* 5. WHAT AM I DOING? QUICK JOURNAL */}
+        <WhatAmIDoingInput />
 
-          {/* 5. WHAT AM I DOING? QUICK JOURNAL */}
-          <WhatAmIDoingInput />
-
-          {/* 6. GENERAL NOTES */}
-          <NotesSection title="Notes" notes={homeNotes ?? []} category="general" />
-        </div>
-      )}
+        {/* 6. GENERAL NOTES */}
+        <NotesSection title="Notes" notes={homeNotes ?? []} category="general" />
+      </div>
 
       {/* LEVEL 2: DEEP DEDICATED VIEWS */}
       {activeSection === "priorities" && (

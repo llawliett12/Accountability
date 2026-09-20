@@ -24,7 +24,8 @@ export async function fetchGoalsWithProgress(userId: string): Promise<GoalWithMe
   const { data: goals, error } = await supabase
     .from("goals")
     .select("*")
-    .eq("user_id", userId);
+    .eq("user_id", userId)
+    .order("created_at", { ascending: false });
   if (error) throw error;
 
   const goalList = (goals ?? []) as Goal[];

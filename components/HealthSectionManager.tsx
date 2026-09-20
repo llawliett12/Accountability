@@ -108,8 +108,7 @@ export default function HealthSectionManager({
   return (
     <>
       {/* LEVEL 1: MINIMAL HEALTH CONTROL CENTER */}
-      {!activeSection && (
-        <div className="space-y-4">
+      <div className={activeSection ? "hidden" : "space-y-4"}>
           {/* COMPACT DETERMINISTIC AVERAGES OVERVIEW */}
           <section
             aria-label="Health Deterministic Averages"
@@ -235,7 +234,6 @@ export default function HealthSectionManager({
             category="health"
           />
         </div>
-      )}
 
 
 

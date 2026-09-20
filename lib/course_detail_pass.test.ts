@@ -61,6 +61,7 @@ const mockSupabase = {
       mockSelect(table);
       return {
         eq: vi.fn(() => ({
+          order: vi.fn().mockResolvedValue({ data: [], error: null }),
           eq: vi.fn(() => ({
             order: vi.fn(() => ({
               limit: vi.fn().mockResolvedValue({ data: [], error: null }),

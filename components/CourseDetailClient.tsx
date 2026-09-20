@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
 import Link from "next/link";
 import type { CourseDetailData } from "@/lib/courses/queries";
 import {
@@ -48,6 +49,7 @@ const PRIORITY_BADGES: Record<number, { label: string; class: string }> = {
 };
 
 export default function CourseDetailClient({ details }: { details: CourseDetailData }) {
+  const router = useRouter();
   const { course, attendance, pastScores } = details;
 
   const [pending, startTransition] = useTransition();
@@ -120,6 +122,7 @@ export default function CourseDetailClient({ details }: { details: CourseDetailD
         });
         setNotesSaved(true);
         setTimeout(() => setNotesSaved(false), 2500);
+        router.refresh();
       } catch (e) {
         console.error("Failed to save notes", e);
       }
@@ -135,6 +138,7 @@ export default function CourseDetailClient({ details }: { details: CourseDetailD
         } else {
           await activateCourse(course.id);
         }
+        router.refresh();
       } catch (e) {
         console.error("Failed to toggle course active status", e);
       }
@@ -174,6 +178,7 @@ export default function CourseDetailClient({ details }: { details: CourseDetailD
           } as ClassDef,
         ]);
         setShowAddSlot(false);
+        router.refresh();
       } catch (err) {
         console.error("Failed to add slot", err);
       }
@@ -187,6 +192,7 @@ export default function CourseDetailClient({ details }: { details: CourseDetailD
     startTransition(async () => {
       try {
         await deleteTimetableSlot(slotId);
+        router.refresh();
       } catch (e) {
         console.error("Failed to delete slot", e);
         setSlots(prevSlots);
@@ -209,6 +215,7 @@ export default function CourseDetailClient({ details }: { details: CourseDetailD
         setShowAddExtra(false);
         setExtraDate("");
         setExtraNotes("");
+        router.refresh();
       } catch (err) {
         console.error("Failed to add extra class", err);
       }
@@ -256,6 +263,7 @@ export default function CourseDetailClient({ details }: { details: CourseDetailD
         setAssessmentDate("");
         setAssessmentTargetScore("");
         setAssessmentNotes("");
+        router.refresh();
       } catch (err) {
         console.error("Failed to add assessment", err);
       }
@@ -269,6 +277,7 @@ export default function CourseDetailClient({ details }: { details: CourseDetailD
     startTransition(async () => {
       try {
         await deleteAssessment(id);
+        router.refresh();
       } catch (err) {
         console.error("Failed to delete assessment", err);
         setAssessments(prevList);
@@ -310,6 +319,7 @@ export default function CourseDetailClient({ details }: { details: CourseDetailD
         setDeadlineTitle("");
         setDeadlineDueDate("");
         setDeadlineNotes("");
+        router.refresh();
       } catch (err) {
         console.error("Failed to add deadline", err);
       }
@@ -324,6 +334,7 @@ export default function CourseDetailClient({ details }: { details: CourseDetailD
     startTransition(async () => {
       try {
         await updateDeadlineStatus(id, nextStatus);
+        router.refresh();
       } catch (err) {
         console.error("Failed to toggle deadline status", err);
       }
@@ -337,6 +348,7 @@ export default function CourseDetailClient({ details }: { details: CourseDetailD
     startTransition(async () => {
       try {
         await deleteDeadline(id);
+        router.refresh();
       } catch (err) {
         console.error("Failed to delete deadline", err);
         setDeadlines(prevList);
@@ -386,6 +398,7 @@ export default function CourseDetailClient({ details }: { details: CourseDetailD
         setGoalDueDate("");
         setGoalDescription("");
         setGoalPriority(3);
+        router.refresh();
       } catch (err) {
         console.error("Failed to add goal", err);
       }
@@ -399,6 +412,7 @@ export default function CourseDetailClient({ details }: { details: CourseDetailD
     startTransition(async () => {
       try {
         await updateGoal(goalId, { status: nextStatus });
+        router.refresh();
       } catch (err) {
         console.error("Failed to update goal status", err);
       }
@@ -424,6 +438,7 @@ export default function CourseDetailClient({ details }: { details: CourseDetailD
           manual_progress: progressValue,
           status: progressValue === 100 ? "completed" : undefined,
         });
+        router.refresh();
       } catch (err) {
         console.error("Failed to update goal progress", err);
       }
@@ -437,6 +452,7 @@ export default function CourseDetailClient({ details }: { details: CourseDetailD
     startTransition(async () => {
       try {
         await deleteGoal(goalId);
+        router.refresh();
       } catch (err) {
         console.error("Failed to delete goal", err);
         setGoals(prevList);
@@ -505,6 +521,7 @@ export default function CourseDetailClient({ details }: { details: CourseDetailD
         setTaskNotes("");
         setTaskAddAsGoal(false);
         setTaskPriority(3);
+        router.refresh();
       } catch (err) {
         console.error("Failed to add task", err);
       }
@@ -519,6 +536,7 @@ export default function CourseDetailClient({ details }: { details: CourseDetailD
     startTransition(async () => {
       try {
         await updateTaskStatus(taskId, nextStatus);
+        router.refresh();
       } catch (err) {
         console.error("Failed to toggle task", err);
       }
@@ -532,6 +550,7 @@ export default function CourseDetailClient({ details }: { details: CourseDetailD
     startTransition(async () => {
       try {
         await deleteTask(taskId);
+        router.refresh();
       } catch (err) {
         console.error("Failed to delete task", err);
         setTasks(prevList);
