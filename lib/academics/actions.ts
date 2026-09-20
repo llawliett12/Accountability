@@ -56,7 +56,7 @@ export async function createClass(input: {
   await generateOccurrences(data.id, todayISO(), addDays(todayISO(), 56));
 
   revalidatePath("/academics");
-  revalidatePath("/academics/classes");
+  revalidatePath("/");
   return data.id as string;
 }
 
@@ -68,7 +68,8 @@ export async function deactivateClass(classId: string) {
     .eq("id", classId)
     .eq("user_id", user.id);
   if (error) throw error;
-  revalidatePath("/academics/classes");
+  revalidatePath("/academics");
+  revalidatePath("/");
 }
 
 // ---------- occurrences ----------
@@ -80,7 +81,7 @@ export async function generateOccurrences(classId: string, startISO: string, end
 
   const { data: cls, error: clsErr } = await supabase
     .from("classes")
-    .select("id, day_of_week, start_time, end_time")
+    .select("id, course_id, day_of_week, start_time, end_time")
     .eq("id", classId)
     .eq("user_id", user.id)
     .single();
@@ -92,9 +93,11 @@ export async function generateOccurrences(classId: string, startISO: string, end
   const rows = dates.map((date) => ({
     user_id: user.id,
     class_id: classId,
+    course_id: cls.course_id ?? null,
     date,
     start_time: cls.start_time,
     end_time: cls.end_time,
+    is_extra: false,
   }));
 
   const { error } = await supabase
@@ -104,7 +107,10 @@ export async function generateOccurrences(classId: string, startISO: string, end
 
   revalidatePath("/academics");
   revalidatePath("/academics/calendar");
-  revalidatePath(`/academics/classes/${classId}`);
+  if (cls.course_id) {
+    revalidatePath(`/academics/courses/${cls.course_id}`);
+  }
+  revalidatePath("/");
 }
 
 export async function markAttendance(occurrenceId: string, status: AttendanceStatus) {
@@ -380,6 +386,6 @@ export async function updateClass(
     .eq("user_id", user.id);
   if (error) throw error;
   revalidatePath("/academics");
-  revalidatePath("/academics/classes");
+  revalidatePath("/");
 }
 

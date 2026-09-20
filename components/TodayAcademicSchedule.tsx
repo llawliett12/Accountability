@@ -33,7 +33,7 @@ export default function TodayAcademicSchedule({
       </div>
 
       {items.length === 0 ? (
-        <p className="font-mono text-xs text-neutral-500 py-1">No academic classes scheduled today.</p>
+        <p className="font-mono text-xs text-neutral-500 py-1">No classes scheduled today.</p>
       ) : (
         <div className="divide-y divide-neutral-800/60 font-mono text-xs">
           {items.map((item) => {

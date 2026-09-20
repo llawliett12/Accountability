@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { fetchOccurrencesInRange, fetchAssessments, fetchDeadlines, fetchClasses } from "@/lib/academics/queries";
+import { fetchCourses } from "@/lib/courses/queries";
 import { weekBounds, shiftWeek } from "@/lib/academics/engine";
 import { todayISO } from "@/lib/date";
 
@@ -22,14 +23,16 @@ export default async function AcademicCalendarPage({
     return <p className="text-sm text-neutral-500">Sign in to see your calendar.</p>;
   }
 
-  const [occurrences, classes, assessments, deadlines] = await Promise.all([
+  const [occurrences, classes, assessments, deadlines, courses] = await Promise.all([
     fetchOccurrencesInRange(user.id, weekStart, weekEnd),
     fetchClasses(user.id),
     fetchAssessments(user.id),
     fetchDeadlines(user.id),
+    fetchCourses(user.id),
   ]);
 
   const classNameById = new Map(classes.map((c) => [c.id, c.name]));
+  const courseCodeById = new Map(courses.map((c) => [c.id, c.code]));
 
   const weekAssessments = assessments.filter((a) => a.date >= weekStart && a.date <= weekEnd);
   const weekDeadlines = deadlines.filter((d) => d.due_date >= weekStart && d.due_date <= weekEnd);
@@ -85,10 +88,12 @@ export default async function AcademicCalendarPage({
                 {dayOccurrences.map((o) => (
                   <li key={o.id} className="flex justify-between">
                     <Link
-                      href={o.class_id ? `/academics/classes/${o.class_id}` : `/academics`}
+                      href={o.course_id ? `/academics/courses/${o.course_id}` : `/academics`}
                       className="underline"
                     >
-                      {(o.class_id ? classNameById.get(o.class_id) : null) ?? "Class"}
+                      {(o.course_id ? courseCodeById.get(o.course_id) : null) ??
+                        (o.class_id ? classNameById.get(o.class_id) : null) ??
+                        "Class"}
                     </Link>
                     <span className="text-neutral-500">{o.start_time?.slice(0, 5)}</span>
                   </li>

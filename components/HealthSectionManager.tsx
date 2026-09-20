@@ -19,12 +19,22 @@ export interface HealthDayTrend {
   screenTimeHours: number | null;
 }
 
+export interface HealthAverages {
+  sleepAvg7d: number | null;
+  sleepAvg30d: number | null;
+  meditationAvg7d: number | null;
+  meditationAvg30d: number | null;
+  screenTimeAvg7d: number | null;
+  foodAvg7d: number | null;
+}
+
 interface HealthSectionManagerProps {
   initialSection?: HealthSection | null;
   today: string;
+  // Deterministic averages
+  averages: HealthAverages;
   // Sleep data
   lastNightSleep: SleepLogRecord | null;
-  weeklySleepAvgHours: number;
   recentSleepLogs: SleepLogRecord[];
   // Food data
   todayFoodEntries: FoodEntry[];
@@ -42,8 +52,8 @@ interface HealthSectionManagerProps {
 export default function HealthSectionManager({
   initialSection = null,
   today,
+  averages,
   lastNightSleep,
-  weeklySleepAvgHours,
   recentSleepLogs,
   todayFoodEntries,
   todayMeditation,
@@ -89,26 +99,76 @@ export default function HealthSectionManager({
   const todayScreenHours = todayScreenTime
     ? (todayScreenTime.totalMinutes / 60).toFixed(1)
     : null;
-  const topAppSummary = todayScreenTime?.topApps?.length
-    ? `${todayScreenTime.topApps[0].app_name} (${todayScreenTime.topApps[0].duration_minutes}m)`
-    : "";
 
   return (
     <>
       {/* LEVEL 1: MINIMAL HEALTH CONTROL CENTER */}
       {!activeSection && (
         <div className="space-y-4">
-          {/* Summary Strip */}
-          <div className="flex flex-wrap items-center gap-2 rounded-lg border border-neutral-800/80 bg-neutral-900/40 px-3 py-2 font-mono text-xs text-neutral-400">
-            <span>Sleep: <strong className="text-white">{lastNightHours ? `${lastNightHours}h` : "Not logged"}</strong></span>
-            <span className="text-neutral-600">·</span>
-            <span>Food: <strong className="text-white">{todayFoodEntries.length} logged</strong></span>
-            <span className="text-neutral-600">·</span>
-            <span>Meditation: <strong className="text-white">{todayMeditationMins ? `${todayMeditationMins}m` : "Not logged"}</strong></span>
-            <span className="text-neutral-600">·</span>
-            <span>Screen: <strong className="text-white">{todayScreenHours ? `${todayScreenHours}h` : "Not logged"}</strong></span>
-          </div>
+          {/* COMPACT DETERMINISTIC AVERAGES OVERVIEW */}
+          <section
+            aria-label="Health Deterministic Averages"
+            className="rounded-2xl border border-neutral-800/80 bg-neutral-900/30 p-3.5 space-y-2.5 font-mono"
+          >
+            <div className="flex items-center justify-between">
+              <span className="text-[10px] uppercase tracking-wider text-neutral-400 font-bold">
+                Health Averages · Stored Records
+              </span>
+              <span className="text-[10px] text-neutral-500">7d &amp; 30d Trends</span>
+            </div>
 
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 text-xs">
+              {/* Sleep Averages */}
+              <div className="rounded-xl border border-neutral-800 bg-neutral-950/60 p-2.5 space-y-1">
+                <div className="text-[10px] text-neutral-400 uppercase font-semibold">Sleep</div>
+                <div className="text-base font-bold text-white">
+                  {averages.sleepAvg7d !== null ? `${averages.sleepAvg7d}h` : "--"}
+                  <span className="text-[10px] font-normal text-neutral-500 ml-1">7d</span>
+                </div>
+                <div className="text-[10px] text-neutral-500">
+                  30d avg: <strong className="text-neutral-300">{averages.sleepAvg30d !== null ? `${averages.sleepAvg30d}h` : "--"}</strong>
+                </div>
+              </div>
+
+              {/* Meditation Averages */}
+              <div className="rounded-xl border border-neutral-800 bg-neutral-950/60 p-2.5 space-y-1">
+                <div className="text-[10px] text-neutral-400 uppercase font-semibold">Meditation</div>
+                <div className="text-base font-bold text-amber-300">
+                  {averages.meditationAvg7d !== null ? `${averages.meditationAvg7d}m` : "--"}
+                  <span className="text-[10px] font-normal text-neutral-500 ml-1">/day</span>
+                </div>
+                <div className="text-[10px] text-neutral-500">
+                  30d avg: <strong className="text-neutral-300">{averages.meditationAvg30d !== null ? `${averages.meditationAvg30d}m` : "--"}</strong>
+                </div>
+              </div>
+
+              {/* Screen Time Averages */}
+              <div className="rounded-xl border border-neutral-800 bg-neutral-950/60 p-2.5 space-y-1">
+                <div className="text-[10px] text-neutral-400 uppercase font-semibold">Screen Time</div>
+                <div className="text-base font-bold text-blue-300">
+                  {averages.screenTimeAvg7d !== null ? `${averages.screenTimeAvg7d}h` : "--"}
+                  <span className="text-[10px] font-normal text-neutral-500 ml-1">/day</span>
+                </div>
+                <div className="text-[10px] text-neutral-500">
+                  Today: <strong className="text-neutral-300">{todayScreenHours ? `${todayScreenHours}h` : "--"}</strong>
+                </div>
+              </div>
+
+              {/* Food Consistency */}
+              <div className="rounded-xl border border-neutral-800 bg-neutral-950/60 p-2.5 space-y-1">
+                <div className="text-[10px] text-neutral-400 uppercase font-semibold">Food Logged</div>
+                <div className="text-base font-bold text-emerald-300">
+                  {averages.foodAvg7d !== null ? `${averages.foodAvg7d}` : "--"}
+                  <span className="text-[10px] font-normal text-neutral-500 ml-1">meals/d</span>
+                </div>
+                <div className="text-[10px] text-neutral-500">
+                  Today: <strong className="text-neutral-300">{todayFoodEntries.length} logged</strong>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          {/* DEEP HEALTH LOGGING DOORS */}
           <section aria-label="Health navigation" className="space-y-1">
             <SectionBlock
               href="/health?section=sleep"
@@ -116,8 +176,8 @@ export default function HealthSectionManager({
               title="Sleep"
               summary={
                 lastNightHours
-                  ? `Last night: ${lastNightHours}h · 7d avg: ${weeklySleepAvgHours.toFixed(1)}h`
-                  : `Last night: Not logged · 7d avg: ${weeklySleepAvgHours.toFixed(1)}h`
+                  ? `Last night: ${lastNightHours}h · 7d avg: ${averages.sleepAvg7d ?? "--"}h`
+                  : `Last night: Not logged · 7d avg: ${averages.sleepAvg7d ?? "--"}h`
               }
               tone={lastNightHours ? "good" : "neutral"}
             />
@@ -127,8 +187,8 @@ export default function HealthSectionManager({
               title="Food"
               summary={
                 todayFoodEntries.length
-                  ? `${todayFoodEntries.length} meals/snacks logged today`
-                  : "No food logged today · Tap to add"
+                  ? `${todayFoodEntries.length} meals/snacks logged today · 7d avg: ${averages.foodAvg7d} meals/d`
+                  : `No food logged today · 7d avg: ${averages.foodAvg7d} meals/d`
               }
               tone={todayFoodEntries.length ? "active" : "neutral"}
             />
@@ -138,8 +198,8 @@ export default function HealthSectionManager({
               title="Meditation"
               summary={
                 todayMeditationMins
-                  ? `Today: ${todayMeditationMins} min · ${meditationStreak}d streak`
-                  : `Today: Not logged · ${meditationStreak}d streak`
+                  ? `Today: ${todayMeditationMins}m · ${meditationStreak}d streak · 7d avg: ${averages.meditationAvg7d}m/d`
+                  : `Today: Not logged · ${meditationStreak}d streak · 7d avg: ${averages.meditationAvg7d}m/d`
               }
               tone={todayMeditationMins ? "good" : "neutral"}
             />
@@ -149,21 +209,23 @@ export default function HealthSectionManager({
               title="Screen Time"
               summary={
                 todayScreenHours
-                  ? `Today: ${todayScreenHours}h${topAppSummary ? ` · Top: ${topAppSummary}` : ""}`
-                  : "Not logged today"
+                  ? `Today: ${todayScreenHours}h · 7d avg: ${averages.screenTimeAvg7d ?? "--"}h/d`
+                  : `Today: Not logged · 7d avg: ${averages.screenTimeAvg7d ?? "--"}h/d`
               }
-              tone={todayScreenHours ? "neutral" : "neutral"}
+              tone={todayScreenHours ? "active" : "neutral"}
             />
             <SectionBlock
               href="/health?section=trends"
               onClick={() => selectSection("trends")}
-              title="Trends"
-              summary="7-day overview across Sleep, Food, Meditation, and Screen Time"
-              tone="neutral"
+              title="Trends &amp; History"
+              summary="7-day consolidated health matrix and consistency trends"
+              tone="good"
             />
           </section>
         </div>
       )}
+
+
 
       {/* LEVEL 2: SLEEP */}
       {activeSection === "sleep" && (
@@ -203,7 +265,7 @@ export default function HealthSectionManager({
             <div className="col-span-2 sm:col-span-1 rounded-xl border border-neutral-800 bg-neutral-900/60 p-3">
               <div className="text-[10px] font-mono text-neutral-500 uppercase">7-Day Average</div>
               <div className="text-xl font-bold font-mono text-white mt-1">
-                {weeklySleepAvgHours ? `${weeklySleepAvgHours.toFixed(1)}h` : "--"}
+                {averages.sleepAvg7d !== null ? `${averages.sleepAvg7d}h` : "--"}
               </div>
               <div className="text-[11px] text-neutral-500 font-mono mt-0.5">
                 Target: 7-8h

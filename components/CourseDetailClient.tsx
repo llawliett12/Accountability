@@ -8,6 +8,7 @@ import {
   deactivateCourse,
   activateCourse,
   addTimetableSlot,
+  deleteTimetableSlot,
   createExtraClass,
   cancelClassOccurrence,
 } from "@/lib/courses/actions";
@@ -118,6 +119,17 @@ export default function CourseDetailClient({ details }: { details: CourseDetailD
         await cancelClassOccurrence(occId);
       } catch (e) {
         console.error("Failed to cancel occurrence", e);
+      }
+    });
+  };
+
+  const handleDeleteSlot = (slotId: string) => {
+    if (!confirm("Are you sure you want to remove this recurring timetable slot?")) return;
+    startTransition(async () => {
+      try {
+        await deleteTimetableSlot(slotId);
+      } catch (e) {
+        console.error("Failed to delete slot", e);
       }
     });
   };
@@ -259,8 +271,6 @@ export default function CourseDetailClient({ details }: { details: CourseDetailD
                   <option value={3}>Wednesday</option>
                   <option value={4}>Thursday</option>
                   <option value={5}>Friday</option>
-                  <option value={6}>Saturday</option>
-                  <option value={0}>Sunday</option>
                 </select>
               </div>
 
@@ -410,7 +420,17 @@ export default function CourseDetailClient({ details }: { details: CourseDetailD
                     {s.start_time.slice(0, 5)} &ndash; {s.end_time.slice(0, 5)}
                   </span>
                 </div>
-                {s.location && <span className="text-neutral-500 text-[11px]">{s.location}</span>}
+                <div className="flex items-center gap-3">
+                  {s.location && <span className="text-neutral-500 text-[11px]">📍 {s.location}</span>}
+                  <button
+                    type="button"
+                    onClick={() => handleDeleteSlot(s.id)}
+                    className="rounded px-1.5 py-0.5 text-neutral-500 hover:text-rose-400 hover:bg-neutral-800 transition-colors text-[11px]"
+                    title="Delete slot"
+                  >
+                    ✕
+                  </button>
+                </div>
               </div>
             ))}
           </div>

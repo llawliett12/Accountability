@@ -49,7 +49,12 @@ export default async function GoalsPage(props: { searchParams?: Promise<{ sectio
   const todayGoalIds = new Set((todayTasks ?? []).map((t) => t.goal_id as string));
   const todayGoals = goals.filter((g) => todayGoalIds.has(g.id));
 
-  const { data: coursesData } = await supabase.from("courses").select("id, code");
+  const { data: coursesData } = await supabase
+    .from("courses")
+    .select("id, code, name")
+    .eq("user_id", user.id)
+    .eq("active", true);
+
   const courseCodeMap: Record<string, string> = {};
   for (const c of coursesData ?? []) {
     courseCodeMap[c.id] = c.code;
@@ -57,15 +62,14 @@ export default async function GoalsPage(props: { searchParams?: Promise<{ sectio
 
   const top3Goals = active.filter((g) => g.is_top3);
 
-  const parentOptions = goals.map((g) => ({ id: g.id, title: g.title, level: g.level }));
-
   return (
     <div className="space-y-6 pb-6">
       <header className="border-b border-neutral-800/80 pb-3">
-        <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-white">Goals</h1>
+        <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-white font-mono">Goals</h1>
       </header>
 
       <GoalsSectionManager
+        allGoals={goals}
         initialSection={section}
         active={active}
         overdue={overdue}
@@ -73,9 +77,9 @@ export default async function GoalsPage(props: { searchParams?: Promise<{ sectio
         todayGoals={todayGoals}
         upcoming={upcoming}
         recentlyCompleted={recentlyCompleted}
-        parentOptions={parentOptions}
         goalsCount={goals.length}
         courseCodeMap={courseCodeMap}
+        courses={coursesData ?? []}
       />
     </div>
   );

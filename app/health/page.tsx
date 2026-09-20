@@ -23,20 +23,25 @@ export default async function HealthPage(props: {
   const sevenDaysAgo = shiftDateISO(today, -6);
   const thirtyDaysAgo = shiftDateISO(today, -30);
 
-  // 1. Fetch sleep logs (last 7 days)
+  // 1. Fetch sleep logs (last 30 days)
   const { data: sleepRows } = await supabase
     .from("sleep_logs")
     .select("*")
     .eq("user_id", user.id)
-    .gte("date", sevenDaysAgo)
+    .gte("date", thirtyDaysAgo)
     .lte("date", today)
     .order("date", { ascending: false });
-  const recentSleepLogs = (sleepRows ?? []) as SleepLogRecord[];
+  const allSleepLogs = (sleepRows ?? []) as SleepLogRecord[];
+  const recentSleepLogs = allSleepLogs.filter((s) => s.date >= sevenDaysAgo);
 
   const lastNightSleep = recentSleepLogs[0] ?? null;
-  const totalSleepMinutes = recentSleepLogs.reduce((acc, s) => acc + (s.total_minutes || 0), 0);
-  const weeklySleepAvgHours =
-    recentSleepLogs.length > 0 ? totalSleepMinutes / recentSleepLogs.length / 60 : 0;
+
+  // Sleep 7d & 30d averages (hours)
+  const sleep7dMinutes = recentSleepLogs.reduce((acc, s) => acc + (s.total_minutes || 0), 0);
+  const sleepAvg7d = recentSleepLogs.length > 0 ? sleep7dMinutes / recentSleepLogs.length / 60 : null;
+
+  const sleep30dMinutes = allSleepLogs.reduce((acc, s) => acc + (s.total_minutes || 0), 0);
+  const sleepAvg30d = allSleepLogs.length > 0 ? sleep30dMinutes / allSleepLogs.length / 60 : null;
 
   // 2. Fetch food habits (last 7 days)
   const { data: foodRows } = await supabase
@@ -48,10 +53,14 @@ export default async function HealthPage(props: {
     .order("date", { ascending: false });
 
   const foodByDate = new Map<string, FoodEntry[]>();
+  let totalFoodEntries7d = 0;
   for (const row of foodRows ?? []) {
-    foodByDate.set(row.date, ((row.entries as unknown[]) ?? []) as FoodEntry[]);
+    const entries = ((row.entries as unknown[]) ?? []) as FoodEntry[];
+    foodByDate.set(row.date, entries);
+    totalFoodEntries7d += entries.length;
   }
   const todayFoodEntries = foodByDate.get(today) ?? [];
+  const foodAvg7d = totalFoodEntries7d / 7;
 
   // 3. Fetch meditation logs (last 30 days)
   const { data: medRows } = await supabase
@@ -64,6 +73,17 @@ export default async function HealthPage(props: {
 
   const recentMeditationLogs = (medRows ?? []) as MeditationLogRecord[];
   const todayMeditation = recentMeditationLogs.find((m) => m.date === today) ?? null;
+
+  // Meditation 7d & 30d averages (minutes per day)
+  const med7dMinutes = recentMeditationLogs
+    .filter((m) => m.date >= sevenDaysAgo && m.happened)
+    .reduce((acc, m) => acc + (m.duration_min ?? 15), 0);
+  const meditationAvg7d = Math.round(med7dMinutes / 7);
+
+  const med30dMinutes = recentMeditationLogs
+    .filter((m) => m.happened)
+    .reduce((acc, m) => acc + (m.duration_min ?? 15), 0);
+  const meditationAvg30d = Math.round(med30dMinutes / 30);
 
   // Calculate meditation streak
   let streak = 0;
@@ -91,7 +111,20 @@ export default async function HealthPage(props: {
   const screenByDate = new Map(recentScreenTime.map((s) => [s.date, s]));
   const todayScreenTime = screenByDate.get(today) ?? null;
 
-  // 5. Build 7-day trends
+  const totalScreenMinutes7d = recentScreenTime.reduce((acc, s) => acc + s.totalMinutes, 0);
+  const screenTimeAvg7d = recentScreenTime.length > 0 ? totalScreenMinutes7d / 7 / 60 : null;
+
+  // 5. Build deterministic averages object
+  const averages = {
+    sleepAvg7d: sleepAvg7d ? Number(sleepAvg7d.toFixed(1)) : null,
+    sleepAvg30d: sleepAvg30d ? Number(sleepAvg30d.toFixed(1)) : null,
+    meditationAvg7d,
+    meditationAvg30d,
+    screenTimeAvg7d: screenTimeAvg7d ? Number(screenTimeAvg7d.toFixed(1)) : null,
+    foodAvg7d: Number(foodAvg7d.toFixed(1)),
+  };
+
+  // 6. Build 7-day trends
   const sleepByDate = new Map(recentSleepLogs.map((s) => [s.date, s]));
   const sevenDayTrends: HealthDayTrend[] = [];
   for (let i = 0; i < 7; i++) {
@@ -113,14 +146,14 @@ export default async function HealthPage(props: {
   return (
     <div className="space-y-6 pb-6">
       <header className="border-b border-neutral-800/80 pb-3">
-        <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-white">Health</h1>
+        <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-white font-mono">Health</h1>
       </header>
 
       <HealthSectionManager
         initialSection={section}
         today={today}
         lastNightSleep={lastNightSleep}
-        weeklySleepAvgHours={weeklySleepAvgHours}
+        averages={averages}
         recentSleepLogs={recentSleepLogs}
         todayFoodEntries={todayFoodEntries}
         todayMeditation={todayMeditation}

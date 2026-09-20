@@ -9,50 +9,43 @@ import {
   updateDeadlineStatus,
   deleteDeadline,
   updateDeadline,
-  createClass,
-  deactivateClass,
-  updateClass,
 } from "@/lib/academics/actions";
 import type { ClassWithAttendance } from "@/lib/academics/queries";
 import type {
   Assessment,
   Deadline,
   ClassOccurrence,
+  Course,
   AssessmentType,
   DeadlineStatus,
 } from "@/lib/academics/types";
 import { todayISO } from "@/lib/date";
+import CanonicalTimetable from "@/components/CanonicalTimetable";
 
-export type AcademicsTab = "assessments" | "timetable" | "deadlines" | "performance" | "classes";
+export type AcademicsTab = "assessments" | "timetable" | "deadlines" | "performance";
 
 const TABS: { id: AcademicsTab; label: string; icon: string }[] = [
   { id: "assessments", label: "Assessments", icon: "📊" },
   { id: "timetable", label: "Timetable", icon: "📅" },
   { id: "deadlines", label: "Deadlines", icon: "⏰" },
   { id: "performance", label: "Performance", icon: "📈" },
-  { id: "classes", label: "Classes", icon: "📚" },
-];
-
-const DAYS = [
-  { day: 1, name: "Mon" },
-  { day: 2, name: "Tue" },
-  { day: 3, name: "Wed" },
-  { day: 4, name: "Thu" },
-  { day: 5, name: "Fri" },
-  { day: 6, name: "Sat" },
-  { day: 0, name: "Sun" },
 ];
 
 export default function AcademicsHub({
   initialClasses,
   initialAssessments,
   initialDeadlines,
+  initialOccurrences = [],
+  courses = [],
+  screenshots = [],
   defaultTab = "assessments",
 }: {
   initialClasses: ClassWithAttendance[];
   initialAssessments: Assessment[];
   initialDeadlines: Deadline[];
   initialOccurrences?: ClassOccurrence[];
+  courses?: Course[];
+  screenshots?: { kind: string; url: string | null }[];
   defaultTab?: AcademicsTab;
 }) {
   const [activeTab, setActiveTab] = useState<AcademicsTab>(defaultTab);
@@ -92,6 +85,9 @@ export default function AcademicsHub({
       {activeTab === "timetable" && (
         <TimetableSection
           classes={initialClasses}
+          courses={courses}
+          occurrences={initialOccurrences}
+          screenshots={screenshots}
         />
       )}
 
@@ -106,12 +102,6 @@ export default function AcademicsHub({
         <PerformanceSection
           assessments={initialAssessments}
           classes={initialClasses}
-        />
-      )}
-
-      {activeTab === "classes" && (
-        <ClassesSection
-          initialClasses={initialClasses}
         />
       )}
     </div>
@@ -450,207 +440,26 @@ function AssessmentsSection({
 }
 
 // ==========================================
-// 2. TIMETABLE VIEW (MON - SUN)
+// 2. TIMETABLE VIEW (MON - FRI CANONICAL)
 // ==========================================
 function TimetableSection({
   classes,
+  courses,
+  occurrences,
+  screenshots,
 }: {
   classes: ClassWithAttendance[];
+  courses: Course[];
+  occurrences: ClassOccurrence[];
+  screenshots: { kind: string; url: string | null }[];
 }) {
-  const [selectedDay, setSelectedDay] = useState<number>(new Date().getDay());
-  const [showAddClass, setShowAddClass] = useState(false);
-  const [className, setClassName] = useState("");
-  const [startTime, setStartTime] = useState("09:00");
-  const [endTime, setEndTime] = useState("10:00");
-  const [location, setLocation] = useState("");
-  const [targetAtt, setTargetAtt] = useState("75");
-  const [pending, startTransition] = useTransition();
-
-  const dayClasses = classes
-    .filter((c) => c.day_of_week === selectedDay && c.active)
-    .sort((a, b) => a.start_time.localeCompare(b.start_time));
-
-  const handleAddClass = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!className.trim()) return;
-
-    startTransition(async () => {
-      await createClass({
-        name: className.trim(),
-        day_of_week: selectedDay,
-        start_time: startTime.length === 5 ? `${startTime}:00` : startTime,
-        end_time: endTime.length === 5 ? `${endTime}:00` : endTime,
-        location: location.trim() || undefined,
-        attendance_target: parseInt(targetAtt, 10) || 75,
-      });
-      setClassName("");
-      setLocation("");
-      setShowAddClass(false);
-    });
-  };
-
-  const editClass = (item: ClassWithAttendance) => {
-    const name = prompt("Class name", item.name);
-    if (name === null || !name.trim()) return;
-    const start = prompt("Start time (HH:MM)", item.start_time.slice(0, 5));
-    const end = start === null ? null : prompt("End time (HH:MM)", item.end_time.slice(0, 5));
-    if (!start || !end) return;
-    const location = prompt("Location (optional)", item.location ?? "");
-    if (location === null) return;
-    startTransition(() => updateClass(item.id, { name: name.trim(), start_time: start.length === 5 ? `${start}:00` : start, end_time: end.length === 5 ? `${end}:00` : end, location: location.trim() || null }));
-  };
-
   return (
-    <div className="space-y-4">
-      {/* DAY SELECTOR */}
-      <div className="flex overflow-x-auto no-scrollbar gap-1 rounded-xl bg-neutral-900 border border-neutral-800/80 p-1">
-        {DAYS.map((d) => {
-          const isSelected = selectedDay === d.day;
-          return (
-            <button
-              key={d.day}
-              type="button"
-              onClick={() => setSelectedDay(d.day)}
-              className={`min-h-[44px] min-w-[44px] flex-1 rounded-lg text-xs font-semibold transition-colors whitespace-nowrap px-2 ${
-                isSelected
-                  ? "bg-amber-400 text-neutral-950"
-                  : "text-neutral-400 hover:text-neutral-200"
-              }`}
-            >
-              {d.name}
-            </button>
-          );
-        })}
-      </div>
-
-      <div className="flex items-center justify-between">
-        <h2 className="text-sm font-semibold uppercase tracking-wider text-neutral-300">
-          Classes for {DAYS.find((d) => d.day === selectedDay)?.name}
-        </h2>
-        <button
-          type="button"
-          onClick={() => setShowAddClass(!showAddClass)}
-          className="rounded-lg bg-neutral-800 hover:bg-neutral-700 px-3 py-1.5 text-xs font-semibold text-neutral-200"
-        >
-          {showAddClass ? "✕ Cancel" : "+ Add Class"}
-        </button>
-      </div>
-
-      {showAddClass && (
-        <form
-          onSubmit={handleAddClass}
-          className="border-y border-neutral-800 bg-neutral-950/30 py-3 space-y-3"
-        >
-          <div className="text-xs font-medium text-neutral-300">Add Class Schedule</div>
-          <input
-            type="text"
-            placeholder="Class / Subject name..."
-            value={className}
-            onChange={(e) => setClassName(e.target.value)}
-            className="w-full rounded-lg bg-neutral-800 px-3 py-2 text-xs text-neutral-100 outline-none"
-            required
-          />
-          <div className="grid grid-cols-2 gap-2">
-            <div>
-              <label className="text-[10px] text-neutral-400 block mb-1">Start Time</label>
-              <input
-                type="time"
-                value={startTime}
-                onChange={(e) => setStartTime(e.target.value)}
-                className="w-full rounded-lg bg-neutral-800 px-2 py-1.5 text-xs text-neutral-200 outline-none"
-                required
-              />
-            </div>
-            <div>
-              <label className="text-[10px] text-neutral-400 block mb-1">End Time</label>
-              <input
-                type="time"
-                value={endTime}
-                onChange={(e) => setEndTime(e.target.value)}
-                className="w-full rounded-lg bg-neutral-800 px-2 py-1.5 text-xs text-neutral-200 outline-none"
-                required
-              />
-            </div>
-          </div>
-          <div className="grid grid-cols-2 gap-2">
-            <input
-              type="text"
-              placeholder="Location / Room (opt)"
-              value={location}
-              onChange={(e) => setLocation(e.target.value)}
-              className="rounded-lg bg-neutral-800 px-3 py-2 text-xs text-neutral-100 outline-none"
-            />
-            <input
-              type="number"
-              placeholder="Attendance target %"
-              value={targetAtt}
-              onChange={(e) => setTargetAtt(e.target.value)}
-              className="rounded-lg bg-neutral-800 px-3 py-2 text-xs text-neutral-100 outline-none"
-            />
-          </div>
-          <button
-            type="submit"
-            disabled={pending || !className.trim()}
-            className="w-full rounded-lg bg-white py-2 text-xs font-semibold text-neutral-950 disabled:opacity-50"
-          >
-            {pending ? "Adding..." : "Save Class"}
-          </button>
-        </form>
-      )}
-
-      {/* TIMETABLE TABLE */}
-      <div className="overflow-x-auto border-y sm:border border-neutral-800/80 sm:rounded-xl bg-neutral-950/50">
-        <table className="w-full text-left text-xs border-collapse min-w-[440px]">
-          <thead>
-            <tr className="border-b border-neutral-800 bg-neutral-900/80 text-[10px] font-mono uppercase tracking-wider text-neutral-400">
-              <th className="py-2 px-3 w-32">Time</th>
-              <th className="py-2 px-3">Subject / Class</th>
-              <th className="py-2 px-3">Location</th>
-              <th className="py-2 px-3 text-right">Attendance / Target</th><th className="py-2 px-2"></th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-neutral-800/60 font-mono text-xs">
-            {dayClasses.map((c) => (
-              <tr key={c.id} className="hover:bg-neutral-900/50 transition-colors">
-                <td className="py-2.5 px-3 text-amber-400 font-medium whitespace-nowrap">
-                  {c.start_time.slice(0, 5)} - {c.end_time.slice(0, 5)}
-                </td>
-                <td className="py-2.5 px-3 font-sans">
-                  <span className="font-semibold text-neutral-100">{c.name}</span>
-                </td>
-                <td className="py-2.5 px-3 text-neutral-400 text-[11px] font-sans">
-                  {c.location ? `📍 ${c.location}` : "--"}
-                </td>
-                <td className="py-2.5 px-3 text-right whitespace-nowrap">
-                  <span
-                    className={`rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase ${
-                      c.attendance.zone === "danger"
-                        ? "bg-red-950/80 text-red-400 border border-red-800/50"
-                        : c.attendance.zone === "warning"
-                        ? "bg-amber-950/80 text-amber-400 border border-amber-800/50"
-                        : "bg-emerald-950/80 text-emerald-400 border border-emerald-800/50"
-                    }`}
-                  >
-                    {c.attendance.percentage !== null ? `${c.attendance.percentage}%` : "--"}
-                  </span>
-                  <span className="text-[10px] text-neutral-500 ml-1.5">
-                    ({c.attendance_target}%)
-                  </span>
-                </td>
-                <td className="py-1 px-2 text-right"><button type="button" onClick={() => editClass(c)} className="min-h-9 px-1 text-[10px] text-amber-400">Edit</button></td>
-              </tr>
-            ))}
-            {dayClasses.length === 0 && (
-              <tr>
-                <td colSpan={5} className="py-6 text-center text-xs text-neutral-500 font-mono">
-                  No classes scheduled for {DAYS.find((d) => d.day === selectedDay)?.name}.
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
-      </div>
-    </div>
+    <CanonicalTimetable
+      initialClasses={classes}
+      courses={courses}
+      initialOccurrences={occurrences}
+      screenshots={screenshots}
+    />
   );
 }
 
@@ -1050,98 +859,3 @@ function PerformanceSection({
   );
 }
 
-// ==========================================
-// 5. CLASSES & ATTENDANCE VIEW
-// ==========================================
-function ClassesSection({
-  initialClasses,
-}: {
-  initialClasses: ClassWithAttendance[];
-}) {
-  const [classes, setClasses] = useState<ClassWithAttendance[]>(initialClasses);
-  const [, startTransition] = useTransition();
-
-  const handleDeactivate = (classId: string) => {
-    setClasses((prev) => prev.filter((c) => c.id !== classId));
-    startTransition(async () => {
-      await deactivateClass(classId);
-    });
-  };
-
-  return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-base font-semibold text-neutral-100">Subjects & Attendance</h2>
-          <p className="text-xs text-neutral-400">Attendance records and targets</p>
-        </div>
-      </div>
-
-      {/* SUBJECTS TABLE */}
-      <div className="overflow-x-auto border-y sm:border border-neutral-800/80 sm:rounded-xl bg-neutral-950/50">
-        <table className="w-full text-left text-xs border-collapse min-w-[480px]">
-          <thead>
-            <tr className="border-b border-neutral-800 bg-neutral-900/80 text-[10px] font-mono uppercase tracking-wider text-neutral-400">
-              <th className="py-2 px-3">Subject</th>
-              <th className="py-2 px-3">Location</th>
-              <th className="py-2 px-3 text-center">Attended / Tracked</th>
-              <th className="py-2 px-3 text-center">Target %</th>
-              <th className="py-2 px-3 text-right">Attendance %</th>
-              <th className="py-2 px-2 w-10 text-center"></th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-neutral-800/60 font-mono text-xs">
-            {classes
-              .filter((c) => c.active)
-              .map((c) => (
-                <tr key={c.id} className="hover:bg-neutral-900/50 transition-colors">
-                  <td className="py-2.5 px-3 font-sans font-semibold text-neutral-200">
-                    {c.name}
-                  </td>
-                  <td className="py-2.5 px-3 text-neutral-400 text-[11px] font-sans">
-                    {c.location ? `📍 ${c.location}` : "--"}
-                  </td>
-                  <td className="py-2.5 px-3 text-center text-neutral-300">
-                    {c.attendance.presentCount} / {c.attendance.trackedCount}
-                  </td>
-                  <td className="py-2.5 px-3 text-center text-neutral-400">
-                    {c.attendance_target}%
-                  </td>
-                  <td className="py-2.5 px-3 text-right whitespace-nowrap">
-                    <span
-                      className={`rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase ${
-                        c.attendance.zone === "danger"
-                          ? "bg-red-950/80 text-red-400 border border-red-800/50"
-                          : c.attendance.zone === "warning"
-                          ? "bg-amber-950/80 text-amber-400 border border-amber-800/50"
-                          : "bg-emerald-950/80 text-emerald-400 border border-emerald-800/50"
-                      }`}
-                    >
-                      {c.attendance.percentage !== null ? `${c.attendance.percentage}%` : "--"}
-                    </span>
-                  </td>
-                  <td className="py-2 px-2 text-center">
-                    <button
-                      type="button"
-                      onClick={() => handleDeactivate(c.id)}
-                      title="Deactivate class"
-                      className="min-h-[44px] min-w-[44px] inline-flex items-center justify-center -m-2 text-neutral-600 hover:text-red-400 transition-colors"
-                    >
-                      ✕
-                    </button>
-                  </td>
-                </tr>
-              ))}
-            {classes.length === 0 && (
-              <tr>
-                <td colSpan={6} className="py-6 text-center text-xs text-neutral-500 font-mono">
-                  No subjects added yet. Add classes under the Timetable tab.
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
-      </div>
-    </div>
-  );
-}

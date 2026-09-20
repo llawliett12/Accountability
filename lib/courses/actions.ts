@@ -255,3 +255,166 @@ export async function cancelClassOccurrence(occurrenceId: string) {
   }
   revalidatePath("/");
 }
+
+export async function updateTimetableSlot(
+  slotId: string,
+  patch: {
+    course_id?: string;
+    day_of_week?: number;
+    start_time: string;
+    end_time: string;
+    location?: string | null;
+    slot_type?: SlotType;
+  }
+) {
+  const { supabase, user } = await requireUser();
+
+  const startTime = patch.start_time.length === 5 ? `${patch.start_time}:00` : patch.start_time;
+  const endTime = patch.end_time.length === 5 ? `${patch.end_time}:00` : patch.end_time;
+
+  // 1. Get current slot to know old course_id and day
+  const { data: currentSlot, error: fetchErr } = await supabase
+    .from("classes")
+    .select("id, course_id, day_of_week")
+    .eq("id", slotId)
+    .eq("user_id", user.id)
+    .single();
+
+  if (fetchErr || !currentSlot) throw new Error("Timetable slot not found");
+
+  const targetCourseId = patch.course_id ?? currentSlot.course_id;
+
+  // Sync course code & name to classes.name and classes.subject
+  let courseCode: string | undefined;
+  let courseName: string | undefined;
+  if (targetCourseId) {
+    const { data: c } = await supabase
+      .from("courses")
+      .select("code, name")
+      .eq("id", targetCourseId)
+      .eq("user_id", user.id)
+      .single();
+    if (c) {
+      courseCode = c.code;
+      courseName = c.name;
+    }
+  }
+
+  const payload: Record<string, unknown> = {
+    start_time: startTime,
+    end_time: endTime,
+    location: patch.location !== undefined ? (patch.location?.trim() || null) : undefined,
+    slot_type: patch.slot_type ?? "lecture",
+  };
+  if (patch.course_id !== undefined) payload.course_id = patch.course_id;
+  if (courseCode) payload.name = courseCode;
+  if (courseName) payload.subject = courseName;
+  if (patch.day_of_week !== undefined) payload.day_of_week = patch.day_of_week;
+
+  const { error: updateErr } = await supabase
+    .from("classes")
+    .update(payload)
+    .eq("id", slotId)
+    .eq("user_id", user.id);
+
+  if (updateErr) throw updateErr;
+
+  // 2. Update future unheld occurrences
+  const today = todayISO();
+  const occUpdatePayload: Record<string, unknown> = {
+    start_time: startTime,
+    end_time: endTime,
+  };
+  if (targetCourseId) {
+    occUpdatePayload.course_id = targetCourseId;
+  }
+
+  // Update existing scheduled future occurrences
+  await supabase
+    .from("class_occurrences")
+    .update(occUpdatePayload)
+    .eq("class_id", slotId)
+    .eq("user_id", user.id)
+    .gte("date", today)
+    .eq("status", "scheduled")
+    .is("attendance_status", null);
+
+  // If day_of_week changed, regenerate future occurrences cleanly
+  if (patch.day_of_week !== undefined && patch.day_of_week !== currentSlot.day_of_week) {
+    // Delete future unheld occurrences for the old day
+    await supabase
+      .from("class_occurrences")
+      .delete()
+      .eq("class_id", slotId)
+      .eq("user_id", user.id)
+      .gte("date", today)
+      .eq("status", "scheduled")
+      .is("attendance_status", null);
+
+    // Generate new occurrences for the new day
+    const dates = occurrenceDatesInRange(patch.day_of_week, today, addDays(today, 56));
+    if (dates.length > 0 && targetCourseId) {
+      const rows = dates.map((date) => ({
+        user_id: user.id,
+        course_id: targetCourseId,
+        class_id: slotId,
+        date,
+        start_time: startTime,
+        end_time: endTime,
+        is_extra: false,
+      }));
+
+      await supabase
+        .from("class_occurrences")
+        .upsert(rows, { onConflict: "class_id,date", ignoreDuplicates: true });
+    }
+  }
+
+  revalidatePath("/academics");
+  if (targetCourseId) revalidatePath(`/academics/courses/${targetCourseId}`);
+  if (currentSlot.course_id && currentSlot.course_id !== targetCourseId) {
+    revalidatePath(`/academics/courses/${currentSlot.course_id}`);
+  }
+  revalidatePath("/");
+}
+
+export async function deleteTimetableSlot(slotId: string) {
+  const { supabase, user } = await requireUser();
+
+  const { data: currentSlot } = await supabase
+    .from("classes")
+    .select("id, course_id")
+    .eq("id", slotId)
+    .eq("user_id", user.id)
+    .single();
+
+  if (!currentSlot) return;
+
+  const today = todayISO();
+
+  // Delete future unheld scheduled occurrences
+  await supabase
+    .from("class_occurrences")
+    .delete()
+    .eq("class_id", slotId)
+    .eq("user_id", user.id)
+    .gte("date", today)
+    .eq("status", "scheduled")
+    .is("attendance_status", null);
+
+  // Mark class slot inactive so historical held occurrences remain safe
+  const { error } = await supabase
+    .from("classes")
+    .update({ active: false })
+    .eq("id", slotId)
+    .eq("user_id", user.id);
+
+  if (error) throw error;
+
+  revalidatePath("/academics");
+  if (currentSlot.course_id) {
+    revalidatePath(`/academics/courses/${currentSlot.course_id}`);
+  }
+  revalidatePath("/");
+}
+

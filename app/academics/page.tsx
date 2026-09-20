@@ -27,7 +27,7 @@ export default async function AcademicsPage(props: {
   if (!user) return null;
 
 
-  const validTabs: AcademicsTab[] = ["assessments", "timetable", "deadlines", "performance", "classes"];
+  const validTabs: AcademicsTab[] = ["assessments", "timetable", "deadlines", "performance"];
   const requestedTab = searchParams?.tab as AcademicsTab | undefined;
   const requestedSection = searchParams?.section as AcademicSection | undefined;
   const activeSection = requestedSection ?? (requestedTab && validTabs.includes(requestedTab) ? requestedTab : undefined);

@@ -3,12 +3,16 @@
 import { useState, useTransition } from "react";
 import { createCourse } from "@/lib/courses/actions";
 
+import type { Course } from "@/lib/academics/types";
+
 export default function AddCourseModal({
   isOpen,
   onClose,
+  onCourseCreated,
 }: {
   isOpen: boolean;
   onClose: () => void;
+  onCourseCreated?: (course: Course) => void;
 }) {
   const [code, setCode] = useState("");
   const [name, setName] = useState("");
@@ -22,18 +26,39 @@ export default function AddCourseModal({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!code.trim() || !name.trim()) return;
+    const trimmedCode = code.trim();
+    const trimmedName = name.trim();
+    if (!trimmedCode || !trimmedName) return;
     setError(null);
 
     startTransition(async () => {
       try {
-        await createCourse({
-          code: code.trim(),
-          name: name.trim(),
+        const newId = await createCourse({
+          code: trimmedCode,
+          name: trimmedName,
           instructor: instructor.trim() || undefined,
           location: location.trim() || undefined,
           attendance_target: attendanceTarget,
         });
+
+        if (onCourseCreated) {
+          onCourseCreated({
+            id: newId,
+            user_id: "",
+            code: trimmedCode,
+            name: trimmedName,
+            description: null,
+            instructor: instructor.trim() || null,
+            location: location.trim() || null,
+            attendance_target: attendanceTarget,
+            syllabus_notes: null,
+            next_assessment_notes: null,
+            active: true,
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          });
+        }
+
         setCode("");
         setName("");
         setInstructor("");
