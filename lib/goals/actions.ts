@@ -66,6 +66,7 @@ export async function createGoal(input: {
 
   await recomputeAndStoreProgress(user.id);
   revalidatePath("/goals");
+  revalidatePath("/academics");
   revalidatePath("/");
   return data.id as string;
 }
@@ -102,6 +103,7 @@ export async function updateGoal(
   await recomputeAndStoreProgress(user.id);
   revalidatePath("/goals");
   revalidatePath(`/goals/${goalId}`);
+  revalidatePath("/academics");
   revalidatePath("/");
 }
 
@@ -121,6 +123,7 @@ export async function toggleGoalTop3(goalId: string, is_top3: boolean) {
 
   revalidatePath("/goals");
   revalidatePath(`/goals/${goalId}`);
+  revalidatePath("/academics");
   revalidatePath("/");
 }
 
@@ -139,6 +142,7 @@ export async function deleteGoal(goalId: string) {
   await recomputeAndStoreProgress(user.id);
   revalidatePath("/goals");
   revalidatePath("/plan");
+  revalidatePath("/academics");
   revalidatePath("/");
 }
 
@@ -173,6 +177,7 @@ export async function linkTaskToGoal(taskId: string, goalId: string | null) {
   await recomputeAndStoreProgress(user.id);
   revalidatePath("/plan");
   revalidatePath("/goals");
+  revalidatePath("/academics");
   revalidatePath("/");
 }
 

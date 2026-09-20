@@ -191,6 +191,7 @@ export async function createAssessment(input: {
   type: AssessmentType;
   date: string;
   class_id?: string;
+  course_id?: string | null;
   notes?: string;
   target_score?: number;
   prep_hours?: number;
@@ -204,6 +205,7 @@ export async function createAssessment(input: {
       type: input.type,
       date: input.date,
       class_id: input.class_id ?? null,
+      course_id: input.course_id ?? null,
       notes: input.notes ?? null,
       target_score: input.target_score ?? null,
       prep_hours: input.prep_hours ?? null,
@@ -260,6 +262,7 @@ export async function createDeadline(input: {
   title: string;
   due_date: string;
   class_id?: string;
+  course_id?: string | null;
   category?: string;
   notes?: string;
 }) {
@@ -271,6 +274,7 @@ export async function createDeadline(input: {
       title: input.title,
       due_date: input.due_date,
       class_id: input.class_id ?? null,
+      course_id: input.course_id ?? null,
       category: input.category ?? null,
       notes: input.notes ?? null,
     })
@@ -302,7 +306,11 @@ export async function updateAssessment(
     score?: number | null;
     max_score?: number | null;
     class_id?: string | null;
+    course_id?: string | null;
     status?: AssessmentStatus;
+    type?: AssessmentType;
+    notes?: string | null;
+    target_score?: number | null;
   }
 ) {
   const { supabase, user } = await requireUser();
@@ -340,6 +348,9 @@ export async function updateDeadline(
     title?: string;
     due_date?: string;
     class_id?: string | null;
+    course_id?: string | null;
+    category?: string | null;
+    notes?: string | null;
     status?: DeadlineStatus;
   }
 ) {

@@ -8,9 +8,9 @@ import {
   updateTimetableSlot,
   deleteTimetableSlot,
   createExtraClass,
-  cancelClassOccurrence,
 } from "@/lib/courses/actions";
 import AddCourseModal from "@/components/AddCourseModal";
+import TrashIcon from "@/components/icons/TrashIcon";
 
 const WEEKDAYS = [
   { day: 1, name: "Monday", short: "Mon" },
@@ -30,7 +30,6 @@ interface CanonicalTimetableProps {
 export default function CanonicalTimetable({
   initialClasses,
   courses,
-  initialOccurrences = [],
   screenshots = [],
 }: CanonicalTimetableProps) {
   const todayDay = new Date().getDay();
@@ -38,7 +37,6 @@ export default function CanonicalTimetable({
 
   const [selectedDay, setSelectedDay] = useState<number>(defaultDay);
   const [classes, setClasses] = useState<ClassWithAttendance[]>(initialClasses);
-  const [occurrences, setOccurrences] = useState<ClassOccurrence[]>(initialOccurrences);
 
   // Sync state when props change
   const [prevInitialClasses, setPrevInitialClasses] = useState(initialClasses);
@@ -81,11 +79,6 @@ export default function CanonicalTimetable({
   const [extraEnd, setExtraEnd] = useState("15:00");
   const [extraNotes, setExtraNotes] = useState("");
   const [extraError, setExtraError] = useState<string | null>(null);
-
-  // Cancel class modal state
-  const [showCancelModal, setShowCancelModal] = useState(false);
-  const [cancelOccurrenceId, setCancelOccurrenceId] = useState("");
-  const [cancelError, setCancelError] = useState<string | null>(null);
 
   // Screenshot modal state
   const [showScreenshotModal, setShowScreenshotModal] = useState(false);
@@ -261,27 +254,6 @@ export default function CanonicalTimetable({
     });
   };
 
-  const handleCancelOccurrence = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!cancelOccurrenceId) {
-      setCancelError("Select a class occurrence to cancel.");
-      return;
-    }
-
-    startTransition(async () => {
-      try {
-        await cancelClassOccurrence(cancelOccurrenceId);
-        setOccurrences((prev) =>
-          prev.map((o) => (o.id === cancelOccurrenceId ? { ...o, status: "cancelled" } : o))
-        );
-        setShowCancelModal(false);
-        setCancelOccurrenceId("");
-      } catch (err) {
-        setCancelError(err instanceof Error ? err.message : "Failed to cancel class occurrence");
-      }
-    });
-  };
-
   return (
     <div className="space-y-4">
       <AddCourseModal
@@ -318,16 +290,6 @@ export default function CanonicalTimetable({
             </button>
           )}
 
-          <button
-            type="button"
-            onClick={() => {
-              setCancelError(null);
-              setShowCancelModal(true);
-            }}
-            className="rounded-lg border border-rose-900/60 bg-rose-950/30 px-2.5 py-1.5 text-rose-300 hover:bg-rose-900/50 transition-colors"
-          >
-            Cancel Class
-          </button>
 
           <button
             type="button"
@@ -443,9 +405,11 @@ export default function CanonicalTimetable({
                     <button
                       type="button"
                       onClick={() => handleDeleteSlot(c.id, courseCode)}
-                      className="px-2 py-1 rounded bg-neutral-900 text-neutral-500 hover:text-rose-400 hover:bg-neutral-800 transition-colors text-[11px]"
+                      className="p-1.5 rounded bg-neutral-900 text-neutral-500 hover:text-rose-400 hover:bg-neutral-800 transition-colors"
+                      title="Delete slot"
+                      aria-label={`Delete slot for ${courseCode}`}
                     >
-                      Delete
+                      <TrashIcon className="w-3.5 h-3.5" />
                     </button>
                   </div>
                 </div>
@@ -727,84 +691,6 @@ export default function CanonicalTimetable({
                   className="rounded-lg bg-amber-400 px-4 py-2 font-bold text-neutral-950 hover:bg-amber-300 disabled:opacity-40 transition-colors"
                 >
                   {pending ? "Saving..." : "Save Extra Class"}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* MODAL 3: CANCEL A SPECIFIC CLASS OCCURRENCE */}
-      {showCancelModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
-          <div className="w-full max-w-md rounded-2xl border border-neutral-800 bg-neutral-950 p-5 space-y-4 shadow-2xl">
-            <div className="flex items-center justify-between border-b border-neutral-800/80 pb-3">
-              <h3 className="font-mono text-sm font-bold text-neutral-100 uppercase tracking-wider">
-                Cancel Class Occurrence
-              </h3>
-              <button
-                type="button"
-                onClick={() => setShowCancelModal(false)}
-                className="text-neutral-500 hover:text-neutral-300 text-lg leading-none"
-              >
-                &times;
-              </button>
-            </div>
-
-            <p className="text-xs text-neutral-400 font-mono">
-              Mark a specific class meeting cancelled. Cancelled classes are excluded from attendance calculations.
-            </p>
-
-            {cancelError && (
-              <div className="rounded-lg bg-rose-950/60 border border-rose-800/60 p-2.5 text-xs text-rose-300 font-mono">
-                {cancelError}
-              </div>
-            )}
-
-            <form onSubmit={handleCancelOccurrence} className="space-y-3.5 font-mono text-xs">
-              <div>
-                <label className="text-[10px] text-neutral-400 uppercase font-semibold block mb-1">
-                  Scheduled Occurrence to Cancel *
-                </label>
-                {occurrences.filter((o) => o.status !== "cancelled").length === 0 ? (
-                  <p className="text-neutral-500 py-2">No upcoming occurrences available to cancel.</p>
-                ) : (
-                  <select
-                    value={cancelOccurrenceId}
-                    onChange={(e) => setCancelOccurrenceId(e.target.value)}
-                    required
-                    className="w-full rounded-lg border border-neutral-800 bg-neutral-900 px-3 py-2 text-neutral-100 focus:outline-none focus:border-rose-400 text-xs"
-                  >
-                    <option value="">-- Select Occurrence --</option>
-                    {occurrences
-                      .filter((o) => o.status !== "cancelled")
-                      .map((occ) => {
-                        const crs = occ.course_id ? courseMap.get(occ.course_id) : undefined;
-                        const label = crs ? `${crs.code} (${occ.date} ${occ.start_time?.slice(0, 5)})` : `${occ.date} ${occ.start_time?.slice(0, 5)}`;
-                        return (
-                          <option key={occ.id} value={occ.id}>
-                            {label}
-                          </option>
-                        );
-                      })}
-                  </select>
-                )}
-              </div>
-
-              <div className="flex justify-end gap-2 pt-2 border-t border-neutral-800/80">
-                <button
-                  type="button"
-                  onClick={() => setShowCancelModal(false)}
-                  className="rounded-lg border border-neutral-800 px-3 py-2 text-neutral-400 hover:text-white transition-colors"
-                >
-                  Close
-                </button>
-                <button
-                  type="submit"
-                  disabled={pending || !cancelOccurrenceId}
-                  className="rounded-lg bg-rose-600 px-4 py-2 font-bold text-white hover:bg-rose-500 disabled:opacity-40 transition-colors"
-                >
-                  {pending ? "Cancelling..." : "Mark Cancelled"}
                 </button>
               </div>
             </form>

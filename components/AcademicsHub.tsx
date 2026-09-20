@@ -21,6 +21,7 @@ import type {
 } from "@/lib/academics/types";
 import { todayISO } from "@/lib/date";
 import CanonicalTimetable from "@/components/CanonicalTimetable";
+import TrashIcon from "@/components/icons/TrashIcon";
 
 export type AcademicsTab = "assessments" | "timetable" | "deadlines" | "performance";
 
@@ -416,9 +417,10 @@ function AssessmentsSection({
                       type="button"
                       onClick={() => { if (confirm(`Delete ${a.title}?`)) handleDelete(a.id); }}
                       title="Delete assessment"
+                      aria-label={`Delete ${a.title}`}
                       className="h-7 w-7 inline-flex items-center justify-center rounded text-neutral-500 hover:text-red-400 hover:bg-neutral-800 transition-colors"
                     >
-                      ✕
+                      <TrashIcon className="w-3.5 h-3.5" />
                     </button>
                   </td>
                 </tr>
@@ -685,9 +687,10 @@ function DeadlinesSection({
                       type="button"
                       onClick={() => { if (confirm(`Delete ${d.title}?`)) handleDelete(d.id); }}
                       title="Delete deadline"
+                      aria-label={`Delete ${d.title}`}
                       className="min-h-[44px] min-w-[44px] inline-flex items-center justify-center -m-2 text-neutral-600 hover:text-red-400 transition-colors"
                     >
-                      ✕
+                      <TrashIcon className="w-3.5 h-3.5" />
                     </button>
                   </td>
                 </tr>

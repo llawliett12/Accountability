@@ -59,6 +59,7 @@ export async function createTask(input: {
   notes?: string;
   is_top3?: boolean;
   goal_id?: string;
+  course_id?: string | null;
   daily_plan_id?: string;
   date?: string;
 }) {
@@ -87,6 +88,7 @@ export async function createTask(input: {
       notes: input.notes ?? null,
       is_top3: input.is_top3 ?? false,
       goal_id: input.goal_id ?? null,
+      course_id: input.course_id ?? null,
     })
     .select("*")
     .single();
@@ -110,6 +112,7 @@ export async function createTask(input: {
   }
 
   revalidatePath("/plan");
+  revalidatePath("/academics");
   revalidatePath("/");
   return created;
 }
@@ -176,6 +179,7 @@ export async function updateTaskStatus(taskId: string, status: string, clientId?
   }
 
   revalidatePath("/plan");
+  revalidatePath("/academics");
   revalidatePath("/");
   return { success: true, taskId, status };
 }
@@ -190,6 +194,7 @@ export async function updateTask(
     planned_end?: string | null;
     priority?: number;
     goal_id?: string | null;
+    course_id?: string | null;
     status?: string;
   }
 ) {
@@ -221,6 +226,7 @@ export async function updateTask(
   }
 
   revalidatePath("/plan");
+  revalidatePath("/academics");
   revalidatePath("/");
   return updated;
 }
@@ -256,6 +262,7 @@ export async function deleteTask(taskId: string) {
   }
 
   revalidatePath("/plan");
+  revalidatePath("/academics");
   revalidatePath("/");
   return { success: true, taskId };
 }

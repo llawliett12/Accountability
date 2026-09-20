@@ -9,7 +9,8 @@ import TaskSpreadsheet from "@/components/TaskSpreadsheet";
 import ActivityLedger, { type ActivityEntry } from "@/components/ActivityLedger";
 import PlanDayGesture from "@/components/PlanDayGesture";
 import NextInLineCard from "@/components/NextInLineCard";
-import TodayAcademicSchedule, { type AcademicScheduleItem } from "@/components/TodayAcademicSchedule";
+import WeeklyTimetableReference from "@/components/WeeklyTimetableReference";
+import type { AcademicScheduleItem } from "@/components/TodayAcademicSchedule";
 import HomeTop3Goals from "@/components/HomeTop3Goals";
 import WhatAmIDoingInput from "@/components/WhatAmIDoingInput";
 import type { NextInLineResult } from "@/lib/nextInLine";
@@ -25,6 +26,8 @@ interface HomeSectionManagerProps {
   courseCodeMap: Record<string, string>;
   checkIns: ActivityEntry[];
   academicSchedule: AcademicScheduleItem[];
+  weeklyTimetableImageUrl?: string | null;
+  isWeekday?: boolean;
   nextInLine: NextInLineResult | null;
   gridDays?: unknown;
   currentStreak?: number;
@@ -42,6 +45,8 @@ export default function HomeSectionManager({
   courseCodeMap,
   checkIns,
   academicSchedule,
+  weeklyTimetableImageUrl,
+  isWeekday,
   nextInLine,
 }: HomeSectionManagerProps) {
   const [activeSection, setActiveSection] = useState<HomeSection | null>(initialSection);
@@ -50,6 +55,14 @@ export default function HomeSectionManager({
     setPrevInitial(initialSection);
     setActiveSection(initialSection);
   }
+
+  const isWeekdayActive =
+    isWeekday !== undefined
+      ? isWeekday
+      : (() => {
+          const d = new Date(date + "T00:00:00Z").getUTCDay();
+          return d >= 1 && d <= 5;
+        })();
 
   // Synchronize browser history popstate (Back/Forward buttons)
   useEffect(() => {
@@ -143,8 +156,13 @@ export default function HomeSectionManager({
           {/* 2. LARGE NEXT IN LINE */}
           <NextInLineCard item={nextInLine} />
 
-          {/* 3. TODAY'S ACADEMIC TIMETABLE */}
-          <TodayAcademicSchedule items={academicSchedule} />
+          {/* 3. WEEKLY TIMETABLE REFERENCE (SHOWN MON-FRI ONLY; HIDDEN ON SAT-SUN) */}
+          {isWeekdayActive && (
+            <WeeklyTimetableReference
+              imageUrl={weeklyTimetableImageUrl ?? null}
+              items={academicSchedule}
+            />
+          )}
 
           {/* 4. TOP 3 GOALS */}
           <HomeTop3Goals goals={top3Goals} courseCodeMap={courseCodeMap} />

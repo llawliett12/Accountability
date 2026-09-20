@@ -1,6 +1,7 @@
 "use client";
 
 import type { AppUsage } from "@/lib/screen-time/types";
+import TrashIcon from "@/components/icons/TrashIcon";
 
 export default function AppUsageRows({
   apps,
@@ -40,10 +41,13 @@ export default function AppUsageRows({
             className="w-16 rounded-lg bg-neutral-800 px-2 py-1.5 text-sm outline-none"
           />
           <button
+            type="button"
             onClick={() => removeApp(i)}
-            className="rounded-lg bg-neutral-800 px-2 py-1.5 text-xs text-neutral-500"
+            className="rounded-lg bg-neutral-800 p-2 text-xs text-neutral-500 hover:text-rose-400 hover:bg-neutral-700 transition-colors"
+            title="Remove app"
+            aria-label={`Remove ${app.app_name || "app"}`}
           >
-            ✕
+            <TrashIcon className="w-3.5 h-3.5" />
           </button>
         </div>
       ))}

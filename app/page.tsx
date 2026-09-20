@@ -47,6 +47,7 @@ export default async function MorningDashboard(props: {
     streaksRes,
     gridPlansRes,
     scoreRes,
+    timetableScreenshotRes,
   ] = await Promise.all([
     supabase
       .from("daily_plans")
@@ -132,7 +133,24 @@ export default async function MorningDashboard(props: {
       .eq("user_id", userId)
       .gte("date", gridStart)
       .lte("date", date),
+
+    supabase
+      .from("academic_schedule_screenshots")
+      .select("storage_path")
+      .eq("user_id", userId)
+      .eq("kind", "timetable")
+      .maybeSingle(),
   ]);
+
+  let weeklyTimetableImageUrl: string | null = null;
+  if (timetableScreenshotRes?.data?.storage_path) {
+    const { data: signedData } = await supabase.storage
+      .from("academic-schedule-screenshots")
+      .createSignedUrl(timetableScreenshotRes.data.storage_path, 60 * 60);
+    weeklyTimetableImageUrl = signedData?.signedUrl ?? null;
+  }
+
+  const isWeekday = dayOfWeek >= 1 && dayOfWeek <= 5;
 
   // Active courses map
   const courses = (coursesRes.data ?? []) as Course[];
@@ -305,6 +323,8 @@ export default async function MorningDashboard(props: {
       courseCodeMap={courseCodeMap}
       checkIns={checkIns}
       academicSchedule={academicSchedule}
+      weeklyTimetableImageUrl={weeklyTimetableImageUrl}
+      isWeekday={isWeekday}
       nextInLine={nextInLine}
       gridDays={gridDays}
       currentStreak={currentStreak}

@@ -3,6 +3,7 @@
 import { useState, useTransition } from "react";
 import { addFoodEntry, deleteFoodEntry } from "@/lib/health/actions";
 import type { FoodEntry } from "@/lib/health/types";
+import TrashIcon from "@/components/icons/TrashIcon";
 
 function getCurrentTimeStr(): string {
   const now = new Date();
@@ -176,8 +177,9 @@ export default function FoodLogTable({
                         disabled={pending}
                         className="text-neutral-600 hover:text-red-400 text-xs transition-colors p-1"
                         aria-label="Delete entry"
+                        title="Delete entry"
                       >
-                        ✕
+                        <TrashIcon className="w-3.5 h-3.5" />
                       </button>
                     </td>
                   </tr>
