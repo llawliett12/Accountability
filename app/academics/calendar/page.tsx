@@ -84,8 +84,11 @@ export default async function AcademicCalendarPage({
               <ul className="space-y-1 text-sm">
                 {dayOccurrences.map((o) => (
                   <li key={o.id} className="flex justify-between">
-                    <Link href={`/academics/classes/${o.class_id}`} className="underline">
-                      {classNameById.get(o.class_id) ?? "Class"}
+                    <Link
+                      href={o.class_id ? `/academics/classes/${o.class_id}` : `/academics`}
+                      className="underline"
+                    >
+                      {(o.class_id ? classNameById.get(o.class_id) : null) ?? "Class"}
                     </Link>
                     <span className="text-neutral-500">{o.start_time?.slice(0, 5)}</span>
                   </li>

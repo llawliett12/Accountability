@@ -14,6 +14,8 @@ export async function createGoal(input: {
   start_date?: string;
   due_date?: string;
   priority?: number;
+  course_id?: string | null;
+  is_top3?: boolean;
   target_value?: number;
   manual_progress?: number;
 }) {
@@ -53,6 +55,8 @@ export async function createGoal(input: {
       start_date: input.start_date ?? null,
       due_date: input.due_date ?? null,
       priority: input.priority ?? 3,
+      course_id: input.course_id ?? null,
+      is_top3: input.is_top3 ?? false,
       target_value: input.target_value ?? null,
       manual_progress: input.manual_progress ?? null,
     })
@@ -74,6 +78,8 @@ export async function updateGoal(
     start_date?: string | null;
     due_date?: string | null;
     priority?: number;
+    course_id?: string | null;
+    is_top3?: boolean;
     status?: GoalStatus;
     target_value?: number | null;
     current_value?: number | null;
@@ -94,6 +100,25 @@ export async function updateGoal(
   if (error) throw error;
 
   await recomputeAndStoreProgress(user.id);
+  revalidatePath("/goals");
+  revalidatePath(`/goals/${goalId}`);
+  revalidatePath("/");
+}
+
+export async function toggleGoalTop3(goalId: string, is_top3: boolean) {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) throw new Error("Not authenticated");
+
+  const { error } = await supabase
+    .from("goals")
+    .update({ is_top3, updated_at: new Date().toISOString() })
+    .eq("id", goalId)
+    .eq("user_id", user.id);
+  if (error) throw error;
+
   revalidatePath("/goals");
   revalidatePath(`/goals/${goalId}`);
   revalidatePath("/");

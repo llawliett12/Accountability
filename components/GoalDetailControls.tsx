@@ -18,24 +18,30 @@ export default function GoalDetailControls({
   priority,
   description,
   dueDate,
+  courseId,
+  isTop3 = false,
   status,
   currentValue,
   targetValue,
   manualProgress,
   hasChildren,
   linkedTaskCount,
+  courseOptions = [],
 }: {
   goalId: string;
   title: string;
   priority: number;
   description: string | null;
   dueDate: string | null;
+  courseId?: string | null;
+  isTop3?: boolean;
   status: GoalStatus;
   currentValue: number | null;
   targetValue: number | null;
   manualProgress: number | null;
   hasChildren: boolean;
   linkedTaskCount: number;
+  courseOptions?: { id: string; code: string; name: string }[];
 }) {
   const [pending, startTransition] = useTransition();
   const [currentValueInput, setCurrentValueInput] = useState(
@@ -46,6 +52,8 @@ export default function GoalDetailControls({
   );
   const [titleInput, setTitleInput] = useState(title);
   const [priorityInput, setPriorityInput] = useState(priority);
+  const [courseInput, setCourseInput] = useState(courseId ?? "");
+  const [isTop3Input, setIsTop3Input] = useState(isTop3);
   const [descriptionInput, setDescriptionInput] = useState(description ?? "");
   const [dueDateInput, setDueDateInput] = useState(dueDate ?? "");
   const router = useRouter();
@@ -67,7 +75,16 @@ export default function GoalDetailControls({
   function saveDetails() {
     const nextTitle = titleInput.trim();
     if (!nextTitle) return;
-    startTransition(() => updateGoal(goalId, { title: nextTitle, priority: priorityInput, description: descriptionInput.trim() || "", due_date: dueDateInput || null }));
+    startTransition(() =>
+      updateGoal(goalId, {
+        title: nextTitle,
+        priority: priorityInput,
+        course_id: courseInput || null,
+        is_top3: isTop3Input,
+        description: descriptionInput.trim() || "",
+        due_date: dueDateInput || null,
+      })
+    );
   }
 
   function onDelete() {
@@ -80,21 +97,90 @@ export default function GoalDetailControls({
     });
   }
 
-  // Progress source priority (children > target/current > tasks > manual)
-  // decides which manual controls actually matter right now.
   const showTargetControl = !hasChildren && targetValue !== null;
   const showManualControl = !hasChildren && targetValue === null && linkedTaskCount === 0;
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-3 font-mono text-xs">
       <div className="grid grid-cols-[1fr_auto] gap-2">
-        <input value={titleInput} onChange={(e) => setTitleInput(e.target.value)} aria-label="Goal title" className="min-h-10 rounded border border-neutral-800 bg-neutral-950 px-2 text-sm text-neutral-100 outline-none focus:border-amber-700" />
-        <select value={priorityInput} onChange={(e) => setPriorityInput(Number(e.target.value))} aria-label="Goal importance" className="rounded border border-neutral-800 bg-neutral-950 px-2 text-xs text-neutral-200"><option value={1}>P1</option><option value={2}>P2</option><option value={3}>P3</option><option value={4}>P4</option><option value={5}>P5</option></select>
+        <input
+          value={titleInput}
+          onChange={(e) => setTitleInput(e.target.value)}
+          aria-label="Goal title"
+          className="min-h-10 rounded border border-neutral-800 bg-neutral-950 px-2 text-sm text-neutral-100 outline-none focus:border-amber-700"
+        />
+        <select
+          value={priorityInput}
+          onChange={(e) => setPriorityInput(Number(e.target.value))}
+          aria-label="Goal importance"
+          className="rounded border border-neutral-800 bg-neutral-950 px-2 text-xs text-neutral-200"
+        >
+          <option value={1}>P1</option>
+          <option value={2}>P2</option>
+          <option value={3}>P3</option>
+          <option value={4}>P4</option>
+          <option value={5}>P5</option>
+        </select>
       </div>
-      <textarea value={descriptionInput} onChange={(e) => setDescriptionInput(e.target.value)} placeholder="Description (optional)" rows={2} className="w-full resize-y rounded border border-neutral-800 bg-neutral-950 px-2 py-2 text-xs text-neutral-100 outline-none focus:border-amber-700" />
-      <label className="flex items-center gap-2 text-xs text-neutral-400">Due date <input type="date" value={dueDateInput} onChange={(e) => setDueDateInput(e.target.value)} className="rounded border border-neutral-800 bg-neutral-950 px-2 py-1 text-neutral-200" /></label>
-      <button type="button" disabled={pending || !titleInput.trim()} onClick={saveDetails} className="text-xs text-amber-400 hover:text-amber-300">Save goal details</button>
-      <div className="flex flex-wrap gap-1.5">
+
+      <textarea
+        value={descriptionInput}
+        onChange={(e) => setDescriptionInput(e.target.value)}
+        placeholder="Description (optional)"
+        rows={2}
+        className="w-full resize-y rounded border border-neutral-800 bg-neutral-950 px-2 py-2 text-xs text-neutral-100 outline-none focus:border-amber-700 font-sans"
+      />
+
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+        <label className="flex items-center gap-2 text-xs text-neutral-400">
+          Due date:
+          <input
+            type="date"
+            value={dueDateInput}
+            onChange={(e) => setDueDateInput(e.target.value)}
+            className="rounded border border-neutral-800 bg-neutral-950 px-2 py-1 text-neutral-200"
+          />
+        </label>
+
+        <label className="flex items-center gap-2 text-xs text-neutral-400">
+          Course:
+          <select
+            value={courseInput}
+            onChange={(e) => setCourseInput(e.target.value)}
+            className="rounded border border-neutral-800 bg-neutral-950 px-2 py-1 text-neutral-200"
+          >
+            <option value="">None (Personal)</option>
+            {courseOptions.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.code} · {c.name}
+              </option>
+            ))}
+          </select>
+        </label>
+      </div>
+
+      <div className="flex items-center justify-between pt-1">
+        <label className="flex items-center gap-2 text-xs text-amber-300 font-medium cursor-pointer">
+          <input
+            type="checkbox"
+            checked={isTop3Input}
+            onChange={(e) => setIsTop3Input(e.target.checked)}
+            className="h-4 w-4 rounded bg-neutral-900 border-neutral-800 text-amber-500"
+          />
+          ⭐ Mark as Today&apos;s Top 3 Priority
+        </label>
+
+        <button
+          type="button"
+          disabled={pending || !titleInput.trim()}
+          onClick={saveDetails}
+          className="rounded bg-neutral-100 px-3 py-1 text-xs font-semibold text-neutral-950 hover:bg-neutral-200"
+        >
+          {pending ? "Saving..." : "Save Details"}
+        </button>
+      </div>
+
+      <div className="flex flex-wrap gap-1.5 pt-2 border-t border-neutral-800/80">
         {STATUS_OPTIONS.map((opt) => (
           <button
             key={opt.value}
@@ -102,7 +188,7 @@ export default function GoalDetailControls({
             disabled={pending}
             onClick={() => setStatus(opt.value)}
             className={`rounded-lg px-2.5 py-1 text-xs ${
-              status === opt.value ? "bg-white text-neutral-950" : "bg-neutral-800 text-neutral-400"
+              status === opt.value ? "bg-white text-neutral-950 font-bold" : "bg-neutral-800 text-neutral-400"
             }`}
           >
             {opt.label}
@@ -111,7 +197,7 @@ export default function GoalDetailControls({
       </div>
 
       {showTargetControl && (
-        <div className="flex items-center gap-2 text-xs text-neutral-400">
+        <div className="flex items-center gap-2 text-xs text-neutral-400 pt-1">
           <span>Current value</span>
           <input
             type="number"
@@ -125,7 +211,7 @@ export default function GoalDetailControls({
       )}
 
       {showManualControl && (
-        <div className="flex items-center gap-2 text-xs text-neutral-400">
+        <div className="flex items-center gap-2 text-xs text-neutral-400 pt-1">
           <span>Manual progress</span>
           <input
             type="number"
@@ -140,14 +226,16 @@ export default function GoalDetailControls({
         </div>
       )}
 
-      <button
-        type="button"
-        onClick={onDelete}
-        disabled={pending}
-        className="text-xs text-red-400 underline"
-      >
-        Delete goal
-      </button>
+      <div className="pt-2 border-t border-neutral-800 flex justify-end">
+        <button
+          type="button"
+          disabled={pending}
+          onClick={onDelete}
+          className="text-xs text-rose-400 hover:text-rose-300"
+        >
+          Delete Goal
+        </button>
+      </div>
     </div>
   );
 }

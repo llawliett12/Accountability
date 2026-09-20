@@ -49,6 +49,14 @@ export default async function GoalDetailPage({
   const childLevel = childLevelFor(goal.level);
   const parentOptions = goals.map((g) => ({ id: g.id, title: g.title, level: g.level }));
 
+  const { data: coursesData } = await supabase
+    .from("courses")
+    .select("id, code, name")
+    .eq("user_id", user.id)
+    .eq("active", true)
+    .order("code", { ascending: true });
+  const courseOptions = (coursesData ?? []) as { id: string; code: string; name: string }[];
+
   return (
     <div className="space-y-5">
       <nav className="flex flex-wrap items-center gap-1 text-xs text-neutral-500">
@@ -118,12 +126,15 @@ export default async function GoalDetailPage({
           priority={goal.priority}
           description={goal.description}
           dueDate={goal.due_date}
+          courseId={goal.course_id}
+          isTop3={goal.is_top3}
           status={goal.status}
           currentValue={goal.current_value}
           targetValue={goal.target_value}
           manualProgress={goal.manual_progress}
           hasChildren={children.length > 0}
           linkedTaskCount={linkedTasks?.length ?? 0}
+          courseOptions={courseOptions}
         />
       </section>
 

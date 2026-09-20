@@ -4,12 +4,18 @@ import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import { formatDateDisplay, shiftDateISO } from "@/lib/date";
 import type { Task } from "@/lib/types";
+import type { Goal } from "@/lib/goals/types";
 import TaskSpreadsheet from "@/components/TaskSpreadsheet";
 import ScheduleTable, { type ScheduleItem } from "@/components/ScheduleTable";
 import ActivityLedger, { type ActivityEntry } from "@/components/ActivityLedger";
 import StreakGrid from "@/components/StreakGrid";
 import PlanDayGesture from "@/components/PlanDayGesture";
 import SectionBlock from "@/components/SectionBlock";
+import NextInLineCard from "@/components/NextInLineCard";
+import TodayAcademicSchedule, { type AcademicScheduleItem } from "@/components/TodayAcademicSchedule";
+import HomeTop3Goals from "@/components/HomeTop3Goals";
+import WhatAmIDoingInput from "@/components/WhatAmIDoingInput";
+import type { NextInLineResult } from "@/lib/nextInLine";
 
 export type HomeSection = "priorities" | "current-work" | "schedule" | "progress" | "consistency";
 
@@ -18,13 +24,15 @@ interface HomeSectionManagerProps {
   today: string;
   initialSection?: HomeSection | null;
   tasks: Task[];
-  goals: { id: string; title: string; level: string }[];
+  top3Goals: Goal[];
+  courseCodeMap: Record<string, string>;
   checkIns: ActivityEntry[];
-  scheduleItems: ScheduleItem[];
+  academicSchedule: AcademicScheduleItem[];
+  nextInLine: NextInLineResult | null;
   gridDays: { date: string; planned: number; completed: number; score: number | null }[];
   currentStreak: number;
   maxStreak: number;
-  nextItem: string | null;
+  scheduleItems: ScheduleItem[];
   verdict: { label: string; explanation: string } | null;
 }
 
@@ -33,13 +41,15 @@ export default function HomeSectionManager({
   today,
   initialSection = null,
   tasks,
-  goals,
+  top3Goals,
+  courseCodeMap,
   checkIns,
-  scheduleItems,
+  academicSchedule,
+  nextInLine,
   gridDays,
   currentStreak,
   maxStreak,
-  nextItem,
+  scheduleItems,
   verdict,
 }: HomeSectionManagerProps) {
   const [activeSection, setActiveSection] = useState<HomeSection | null>(initialSection);
@@ -79,185 +89,253 @@ export default function HomeSectionManager({
   const totalTasks = tasks.length;
   const completedTasks = tasks.filter((t) => t.status === "completed").length;
   const remainingTasks = totalTasks - completedTasks;
-  const top3Remaining = tasks.filter((t) => t.is_top3 && t.status !== "completed").length;
-  const pct = totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0;
-  const activeWork = checkIns.find((c) => c.status === "ongoing") ?? checkIns[0];
+
+  const ongoingWork = checkIns.find((c) => c.status === "ongoing" || c.status === "paused");
 
   return (
     <>
       {/* LEVEL 1: MINIMAL CONTROL CENTER */}
       {!activeSection && (
         <div className="space-y-4">
-          {/* TODAY'S OVERVIEW STRIP */}
-          <section className="overview-ledger rounded-xl border border-neutral-800/80">
-            <div className="grid grid-cols-2 sm:grid-cols-4 divide-x divide-y sm:divide-y-0 divide-neutral-800/80 font-mono text-xs">
-              <div className="p-3">
-                <span className="text-[10px] uppercase text-neutral-500 block">Today&apos;s Tasks</span>
-                <span className="text-base font-bold text-neutral-100">
-                  {completedTasks}/{totalTasks}
-                </span>
-                <span className="text-[10px] text-neutral-400 ml-1.5 font-mono">({pct}%)</span>
-              </div>
-              <div className="p-3">
-                <span className="text-[10px] uppercase text-neutral-500 block">Streak</span>
-                <span className="text-base font-bold text-emerald-400">🔥 {maxStreak}d</span>
-              </div>
-              <div className="p-3">
-                <span className="text-[10px] uppercase text-neutral-500 block">Next Up</span>
-                <span className="text-xs font-medium text-amber-300 truncate block pt-0.5">
-                  {nextItem ?? "None scheduled"}
-                </span>
-              </div>
-              <div className="p-3">
-                <span className="text-[10px] uppercase text-neutral-500 block">Discipline</span>
-                <span className="text-xs text-neutral-300 truncate block pt-0.5">
-                  {verdict?.label ?? "Tracking Active"}
-                </span>
-              </div>
+          {/* HEADER: DATE */}
+          <header className="flex items-center justify-between border-b border-neutral-800/80 pb-3">
+            <div>
+              <h1 className="text-xl font-bold tracking-tight text-neutral-100 font-mono">Home</h1>
+              <p className="text-xs text-neutral-400 font-mono mt-0.5">
+                {formatDateDisplay(date)}
+                {date === today && (
+                  <span className="ml-2 inline-flex items-center rounded-md bg-emerald-950/70 border border-emerald-800/60 px-1.5 py-0.5 text-[10px] font-medium text-emerald-400">
+                    Today
+                  </span>
+                )}
+              </p>
             </div>
-          </section>
 
-          {/* 4 MEANINGFUL NAVIGATION DOORS */}
-          <section aria-label="Home navigation" className="space-y-1">
-            <SectionBlock
-              href={`/?date=${date}&section=priorities`}
-              onClick={() => selectSection("priorities")}
-              title="Priorities"
-              summary={
-                remainingTasks > 0
-                  ? `${remainingTasks} remaining${top3Remaining > 0 ? ` · ${top3Remaining} Top 3` : ""}`
-                  : totalTasks > 0
-                  ? "All tasks completed today"
-                  : "No tasks planned yet"
-              }
-              tone={remainingTasks > 0 ? "active" : "good"}
-            />
-            <SectionBlock
-              href={`/?date=${date}&section=current-work`}
-              onClick={() => selectSection("current-work")}
-              title="Current Work"
-              summary={
-                activeWork
-                  ? `${activeWork.status === "ongoing" ? "● Ongoing" : "⏸ Paused"}: ${activeWork.actual_activity}`
-                  : "Idle · tap to start"
-              }
-              tone={activeWork ? (activeWork.status === "ongoing" ? "good" : "warn") : "neutral"}
-            />
-            <SectionBlock
-              href={`/?date=${date}&section=schedule`}
-              onClick={() => selectSection("schedule")}
-              title="Schedule"
-              summary={nextItem ? `Next: ${nextItem}` : "Nothing scheduled today"}
-              tone="neutral"
-            />
-            <SectionBlock
-              href={`/?date=${date}&section=progress`}
-              onClick={() => selectSection("progress")}
-              title="Progress"
-              summary={`🔥 ${currentStreak}d streak · ${verdict?.label ?? "Daily consistency"}`}
-              tone="good"
-            />
-          </section>
+            <div className="flex items-center gap-1.5">
+              <Link
+                href={`/?date=${shiftDateISO(date, -1)}`}
+                className="rounded-lg border border-neutral-800 bg-neutral-900/60 px-2 py-1 text-xs text-neutral-400 hover:text-neutral-200 transition-colors"
+                aria-label="Previous day"
+              >
+                &larr;
+              </Link>
+              {date !== today && (
+                <Link
+                  href="/"
+                  className="rounded-lg border border-neutral-800 bg-neutral-900/60 px-2 py-1 text-xs text-neutral-300 hover:text-white transition-colors font-mono text-[10px]"
+                >
+                  Today
+                </Link>
+              )}
+              <Link
+                href={`/?date=${shiftDateISO(date, 1)}`}
+                className="rounded-lg border border-neutral-800 bg-neutral-900/60 px-2 py-1 text-xs text-neutral-400 hover:text-neutral-200 transition-colors"
+                aria-label="Next day"
+              >
+                &rarr;
+              </Link>
+            </div>
+          </header>
+
+          {/* ACTIVE WORK NOTIFICATION (if work session is running) */}
+          {ongoingWork && (
+            <div className="rounded-xl border border-emerald-800/60 bg-emerald-950/30 p-2.5 flex items-center justify-between text-xs">
+              <div className="flex items-center gap-2 truncate">
+                <span className="relative flex h-2 w-2">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                </span>
+                <span className="font-mono text-emerald-300 font-medium truncate">
+                  {ongoingWork.status === "paused" ? "⏸ Paused: " : "● Ongoing: "}
+                  {ongoingWork.actual_activity}
+                </span>
+              </div>
+              <Link
+                href="/now"
+                className="font-mono text-[10px] text-emerald-400 hover:text-emerald-200 underline whitespace-nowrap ml-2"
+              >
+                Focus Session &rarr;
+              </Link>
+            </div>
+          )}
+
+          {/* RESPONSIVE DESKTOP 2-COLUMN / MOBILE STACK */}
+          <div className="space-y-4 md:space-y-0 md:grid md:grid-cols-2 md:gap-4 items-start">
+            {/* COLUMN 1 */}
+            <div className="space-y-4">
+              {/* 2. NEXT IN LINE */}
+              <NextInLineCard item={nextInLine} />
+
+              {/* 5. WHAT AM I DOING? */}
+              <WhatAmIDoingInput />
+
+              {/* NAVIGATION DOORS TO DEEP SECTIONS */}
+              <section aria-label="Home Navigation Doors" className="space-y-1.5 pt-1">
+                <div className="font-mono text-[10px] uppercase tracking-wider text-neutral-500 font-semibold px-1">
+                  Dedicated Views
+                </div>
+                <SectionBlock
+                  href={`/?date=${date}&section=priorities`}
+                  onClick={() => selectSection("priorities")}
+                  title="Daily Tasks"
+                  summary={
+                    remainingTasks > 0
+                      ? `${remainingTasks} tasks remaining · ${completedTasks}/${totalTasks} done`
+                      : totalTasks > 0
+                      ? `All ${totalTasks} tasks completed`
+                      : "No tasks planned yet"
+                  }
+                  tone={remainingTasks > 0 ? "active" : "good"}
+                />
+                <SectionBlock
+                  href={`/?date=${date}&section=schedule`}
+                  onClick={() => selectSection("schedule")}
+                  title="Full Timetable"
+                  summary={`${academicSchedule.length} classes scheduled · Weekly view`}
+                  tone={academicSchedule.length > 0 ? "good" : "neutral"}
+                />
+                <SectionBlock
+                  href={`/?date=${date}&section=progress`}
+                  onClick={() => selectSection("progress")}
+                  title="Consistency & Streaks"
+                  summary={`🔥 ${currentStreak}d streak · ${verdict?.label ?? "Tracking Active"}`}
+                  tone="good"
+                />
+                <SectionBlock
+                  href={`/?date=${date}&section=current-work`}
+                  onClick={() => selectSection("current-work")}
+                  title="Current Work Ledger"
+                  summary={
+                    ongoingWork
+                      ? `${ongoingWork.status}: ${ongoingWork.actual_activity}`
+                      : "View tracked focus work sessions"
+                  }
+                  tone={ongoingWork ? "active" : "neutral"}
+                />
+              </section>
+            </div>
+
+            {/* COLUMN 2 */}
+            <div className="space-y-4">
+              {/* 3. TODAY'S ACADEMIC SCHEDULE */}
+              <TodayAcademicSchedule items={academicSchedule} />
+
+              {/* 4. THINGS TO BE DONE (TOP 3 GOALS) */}
+              <HomeTop3Goals goals={top3Goals} courseCodeMap={courseCodeMap} />
+            </div>
+          </div>
         </div>
       )}
 
-      {/* SECTION DETAIL: TODAY'S PRIORITIES */}
+      {/* LEVEL 2: DEEP DEDICATED VIEWS */}
       {activeSection === "priorities" && (
-        <section className="space-y-2">
-          <Link
-            href={`/?date=${date}`}
-            prefetch={false}
-            onClick={(e) => {
-              e.preventDefault();
-              handleBack();
-            }}
-            className="section-detail-back"
-          >
-            ← Back to home
-          </Link>
-          <h2 className="section-detail-title">Today&apos;s Priorities</h2>
-          <div className="flex items-center justify-between border-y sm:border border-neutral-800/80 sm:rounded-xl bg-neutral-950/60 p-2">
-            <Link
-              href={`/?date=${shiftDateISO(date, -1)}&section=priorities`}
-              prefetch={false}
-              className="min-h-[40px] px-2 flex items-center text-xs font-mono text-neutral-300"
-              aria-label="Previous day"
+        <div className="space-y-4">
+          <div className="flex items-center justify-between border-b border-neutral-800/80 pb-2">
+            <button
+              type="button"
+              onClick={handleBack}
+              className="inline-flex items-center gap-1.5 font-mono text-xs text-neutral-400 hover:text-white transition-colors"
             >
-              ← Prev
-            </Link>
-            <div className="text-center">
-              <span className="text-sm font-semibold text-neutral-100">{formatDateDisplay(date)}</span>
-              {date === today && <span className="ml-2 text-[9px] font-mono uppercase text-amber-300">Today</span>}
-            </div>
-            <Link
-              href={`/?date=${shiftDateISO(date, 1)}&section=priorities`}
-              prefetch={false}
-              className="min-h-[40px] px-2 flex items-center text-xs font-mono text-neutral-300"
-              aria-label="Next day"
+              &larr; Back to Home
+            </button>
+            <span className="font-mono text-xs font-semibold uppercase tracking-wider text-neutral-300">
+              Tasks &amp; Priorities
+            </span>
+          </div>
+
+          <PlanDayGesture date={date}>
+            <TaskSpreadsheet
+              initialTasks={tasks}
+              goals={top3Goals.map((g) => ({ id: g.id, title: g.title, level: g.level }))}
+              selectedDate={date}
+            />
+          </PlanDayGesture>
+        </div>
+      )}
+
+      {activeSection === "current-work" && (
+        <div className="space-y-4">
+          <div className="flex items-center justify-between border-b border-neutral-800/80 pb-2">
+            <button
+              type="button"
+              onClick={handleBack}
+              className="inline-flex items-center gap-1.5 font-mono text-xs text-neutral-400 hover:text-white transition-colors"
             >
-              Next →
+              &larr; Back to Home
+            </button>
+            <span className="font-mono text-xs font-semibold uppercase tracking-wider text-neutral-300">
+              Current Work Sessions
+            </span>
+          </div>
+
+          <div className="flex items-center justify-between">
+            <p className="text-xs text-neutral-400 font-mono">Work sessions with ongoing/paused/completed lifecycle</p>
+            <Link
+              href="/now"
+              className="rounded-lg bg-neutral-100 px-3 py-1 font-mono text-xs font-semibold text-neutral-950 hover:bg-neutral-200 transition-colors"
+            >
+              Open Full Screen &rarr;
             </Link>
           </div>
-          <PlanDayGesture date={date}>
-            <TaskSpreadsheet initialTasks={tasks} goals={goals} selectedDate={date} />
-          </PlanDayGesture>
-        </section>
-      )}
 
-      {/* SECTION DETAIL: PROGRESS & CONSISTENCY */}
-      {(activeSection === "progress" || activeSection === "consistency") && (
-        <section className="space-y-2">
-          <Link
-            href={`/?date=${date}`}
-            prefetch={false}
-            onClick={(e) => {
-              e.preventDefault();
-              handleBack();
-            }}
-            className="section-detail-back"
-          >
-            ← Back to home
-          </Link>
-          <h2 className="section-detail-title">Progress &amp; Consistency</h2>
-          <StreakGrid days={gridDays} currentStreak={currentStreak} longestStreak={maxStreak} />
-        </section>
-      )}
-
-      {/* SECTION DETAIL: CURRENT WORK */}
-      {activeSection === "current-work" && (
-        <section className="space-y-2">
-          <Link
-            href={`/?date=${date}`}
-            prefetch={false}
-            onClick={(e) => {
-              e.preventDefault();
-              handleBack();
-            }}
-            className="section-detail-back"
-          >
-            ← Back to home
-          </Link>
           <ActivityLedger initialEntries={checkIns} />
-        </section>
+        </div>
       )}
 
-      {/* SECTION DETAIL: SCHEDULE */}
       {activeSection === "schedule" && (
-        <section className="space-y-2">
-          <Link
-            href={`/?date=${date}`}
-            prefetch={false}
-            onClick={(e) => {
-              e.preventDefault();
-              handleBack();
-            }}
-            className="section-detail-back"
-          >
-            ← Back to home
-          </Link>
-          <h2 className="section-detail-title">Schedule</h2>
-          <ScheduleTable items={scheduleItems} selectedDate={date} isHomeView={true} />
-        </section>
+        <div className="space-y-4">
+          <div className="flex items-center justify-between border-b border-neutral-800/80 pb-2">
+            <button
+              type="button"
+              onClick={handleBack}
+              className="inline-flex items-center gap-1.5 font-mono text-xs text-neutral-400 hover:text-white transition-colors"
+            >
+              &larr; Back to Home
+            </button>
+            <span className="font-mono text-xs font-semibold uppercase tracking-wider text-neutral-300">
+              Today&apos;s Academic Timetable
+            </span>
+          </div>
+
+          <ScheduleTable items={scheduleItems} selectedDate={date} />
+        </div>
+      )}
+
+      {activeSection === "progress" && (
+        <div className="space-y-4">
+          <div className="flex items-center justify-between border-b border-neutral-800/80 pb-2">
+            <button
+              type="button"
+              onClick={handleBack}
+              className="inline-flex items-center gap-1.5 font-mono text-xs text-neutral-400 hover:text-white transition-colors"
+            >
+              &larr; Back to Home
+            </button>
+            <span className="font-mono text-xs font-semibold uppercase tracking-wider text-neutral-300">
+              Consistency &amp; Discipline
+            </span>
+          </div>
+
+          <div className="rounded-xl border border-neutral-800 bg-neutral-950 p-4 space-y-3">
+            <div className="flex items-center justify-between font-mono text-xs">
+              <span className="text-neutral-400">Current Streak:</span>
+              <span className="font-bold text-emerald-400">🔥 {currentStreak} days</span>
+            </div>
+            <div className="flex items-center justify-between font-mono text-xs">
+              <span className="text-neutral-400">Best Streak:</span>
+              <span className="font-bold text-neutral-200">🔥 {maxStreak} days</span>
+            </div>
+            {verdict && (
+              <div className="border-t border-neutral-800 pt-2 font-mono text-xs">
+                <span className="text-neutral-400">Discipline Status: </span>
+                <span className="font-semibold text-neutral-200">{verdict.label}</span>
+                <p className="text-[11px] text-neutral-500 mt-0.5">{verdict.explanation}</p>
+              </div>
+            )}
+          </div>
+
+          <StreakGrid days={gridDays} currentStreak={currentStreak} longestStreak={maxStreak} />
+        </div>
       )}
     </>
   );

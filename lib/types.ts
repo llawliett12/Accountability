@@ -22,6 +22,7 @@ export interface Task {
   status: TaskStatus;
   is_top3: boolean;
   goal_id: string | null;
+  course_id?: string | null;
 }
 
 export type PauseReason =

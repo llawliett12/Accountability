@@ -3,11 +3,14 @@
 import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import SectionBlock from "@/components/SectionBlock";
-import AcademicsHub, { type AcademicsTab } from "@/components/AcademicsHub";
+import AcademicsHub from "@/components/AcademicsHub";
 import AcademicScheduleScreenshots from "@/components/AcademicScheduleScreenshots";
 import type { ClassWithAttendance } from "@/lib/academics/queries";
-import type { Assessment, Deadline, ClassOccurrence } from "@/lib/academics/types";
+import type { Assessment, Deadline, ClassOccurrence, Course } from "@/lib/academics/types";
 import type { AcademicScreenshotKind } from "@/lib/academics/screenshot-actions";
+import type { NextInLineAcademicResult } from "@/lib/nextInLine";
+import NextInLineCard from "@/components/NextInLineCard";
+import AddCourseModal from "@/components/AddCourseModal";
 
 export type AcademicSection =
   | "deadlines"
@@ -18,8 +21,15 @@ export type AcademicSection =
   | "timetable"
   | "screenshots";
 
+export interface CourseSummaryItem extends Course {
+  attendancePct: number | null;
+  nextEvent: string | null;
+}
+
 interface AcademicsSectionManagerProps {
   initialSection?: AcademicSection | null;
+  courses: CourseSummaryItem[];
+  nextInLine: NextInLineAcademicResult | null;
   classes: ClassWithAttendance[];
   assessments: Assessment[];
   deadlines: Deadline[];
@@ -29,6 +39,8 @@ interface AcademicsSectionManagerProps {
 
 export default function AcademicsSectionManager({
   initialSection = null,
+  courses,
+  nextInLine,
   classes,
   assessments,
   deadlines,
@@ -37,6 +49,8 @@ export default function AcademicsSectionManager({
 }: AcademicsSectionManagerProps) {
   const [activeSection, setActiveSection] = useState<AcademicSection | null>(initialSection);
   const [prevInitial, setPrevInitial] = useState(initialSection);
+  const [showAddCourse, setShowAddCourse] = useState(false);
+
   if (prevInitial !== initialSection) {
     setPrevInitial(initialSection);
     setActiveSection(initialSection);
@@ -63,8 +77,7 @@ export default function AcademicsSectionManager({
     window.history.pushState(null, "", "/academics");
   }, []);
 
-  const activeClasses = classes.filter((c) => c.active);
-  const activeClassesCount = activeClasses.length;
+  const activeCourses = courses.filter((c) => c.active);
   const upcomingAssessments = assessments.filter((a) => a.status !== "completed").length;
   const openDeadlines = deadlines.filter((d) => d.status !== "completed").length;
   const todayStr = new Date().toISOString().slice(0, 10);
@@ -72,181 +85,197 @@ export default function AcademicsSectionManager({
     (d) => d.status !== "completed" && d.due_date && d.due_date < todayStr
   ).length;
 
-  const scoredAssessments = assessments.filter(
-    (a) => a.score !== null && a.max_score !== null && a.max_score > 0
-  );
-  const scoredCount = scoredAssessments.length;
-  const averageScorePct =
-    scoredCount > 0
-      ? Math.round(
-          scoredAssessments.reduce(
-            (acc, a) => acc + (a.score! / a.max_score!) * 100,
-            0
-          ) / scoredCount
-        )
-      : null;
-
-  const trackedClasses = classes.filter(
-    (c) => c.attendance && c.attendance.trackedCount > 0 && c.attendance.percentage !== null
-  );
-  const overallAttendancePct =
-    trackedClasses.length > 0
-      ? Math.round(
-          trackedClasses.reduce((acc, c) => acc + (c.attendance.percentage ?? 0), 0) /
-            trackedClasses.length
-        )
-      : null;
-  const attendanceAlert = trackedClasses.some(
-    (c) => c.attendance.percentage !== null && c.attendance.percentage < (c.attendance_target ?? 75)
-  );
-
-  const nextOcc = occurrences.find((o) => o.status !== "cancelled");
-  const nextClassText = nextOcc
-    ? `${nextOcc.start_time ? nextOcc.start_time.slice(0, 5) : ""} Class`
-    : null;
-
-  const defaultTab: AcademicsTab =
-    activeSection === "deadlines"
-      ? "deadlines"
-      : activeSection === "schedule" || activeSection === "timetable"
-      ? "timetable"
-      : activeSection === "performance" || activeSection === "classes"
-      ? "performance"
-      : "assessments";
+  const todayFormatted = new Date().toLocaleDateString("en-US", {
+    weekday: "long",
+    month: "short",
+    day: "numeric",
+  });
 
   return (
     <>
-      {/* LEVEL 1: MINIMAL ACADEMIC CONTROL CENTER */}
+      <AddCourseModal isOpen={showAddCourse} onClose={() => setShowAddCourse(false)} />
+
+      {/* LEVEL 1: ACADEMIC CONTROL CENTER */}
       {!activeSection && (
         <div className="space-y-4">
-          {/* ACADEMIC PULSE OVERVIEW STRIP */}
-          <section className="overview-ledger rounded-xl border border-neutral-800/80">
-            <div className="grid grid-cols-2 sm:grid-cols-4 divide-x divide-y sm:divide-y-0 divide-neutral-800/80 font-mono text-xs">
-              <div className="p-3">
-                <span className="text-[10px] uppercase text-neutral-500 block">Upcoming</span>
-                <span className="text-base font-bold text-neutral-100">
-                  {upcomingAssessments + openDeadlines}
-                </span>
-                <span className="text-[10px] text-neutral-400 ml-1.5 font-mono">
-                  ({upcomingAssessments} test, {openDeadlines} due)
-                </span>
-              </div>
-              <div className="p-3">
-                <span className="text-[10px] uppercase text-neutral-500 block">Attendance</span>
-                <span
-                  className={`text-base font-bold ${
-                    attendanceAlert ? "text-amber-400" : "text-emerald-400"
-                  }`}
-                >
-                  {overallAttendancePct !== null ? `${overallAttendancePct}%` : "--"}
-                </span>
-              </div>
-              <div className="p-3">
-                <span className="text-[10px] uppercase text-neutral-500 block">Next Class</span>
-                <span className="text-xs font-medium text-amber-300 truncate block pt-0.5">
-                  {nextClassText ?? "None scheduled"}
-                </span>
-              </div>
-              <div className="p-3">
-                <span className="text-[10px] uppercase text-neutral-500 block">Performance</span>
-                <span className="text-xs text-neutral-300 truncate block pt-0.5">
-                  {averageScorePct !== null ? `${averageScorePct}% avg` : "Tracking active"}
-                </span>
-              </div>
+          {/* 1. DATE HEADER */}
+          <header className="flex items-center justify-between border-b border-neutral-800/80 pb-3">
+            <div>
+              <h1 className="text-xl font-bold tracking-tight text-neutral-100 font-mono">Academics</h1>
+              <p className="text-xs text-neutral-400 font-mono mt-0.5">{todayFormatted}</p>
             </div>
-          </section>
+            <button
+              type="button"
+              onClick={() => setShowAddCourse(true)}
+              className="rounded-lg bg-neutral-100 px-3 py-1 font-mono text-xs font-semibold text-neutral-950 hover:bg-neutral-200 transition-colors"
+            >
+              + Add Course
+            </button>
+          </header>
 
-          {/* 4 CLEAR NAVIGATION DOORS */}
-          <section aria-label="Academic navigation" className="space-y-1">
-            <SectionBlock
-              href="/academics?section=deadlines"
-              onClick={() => selectSection("deadlines")}
-              title="Deadlines"
-              summary={
-                openDeadlines > 0
-                  ? `${openDeadlines} open deadline${openDeadlines > 1 ? "s" : ""}${
-                      overdueDeadlinesCount > 0 ? ` · ${overdueDeadlinesCount} overdue` : ""
-                    }`
-                  : "No open deadlines"
-              }
-              tone={overdueDeadlinesCount > 0 ? "warn" : openDeadlines > 0 ? "active" : "good"}
-            />
-            <SectionBlock
-              href="/academics?section=schedule"
-              onClick={() => selectSection("schedule")}
-              title="Schedule"
-              summary={
-                nextClassText
-                  ? `Next: ${nextClassText} · Weekly timetable & reference documents`
-                  : "Weekly timetable & schedule reference documents"
-              }
-              tone="neutral"
-            />
-            <SectionBlock
-              href="/academics?section=assessments"
-              onClick={() => selectSection("assessments")}
-              title="Assessments"
-              summary={
-                upcomingAssessments > 0
-                  ? `${upcomingAssessments} upcoming assessment${upcomingAssessments > 1 ? "s" : ""}`
-                  : "All assessments scored & completed"
-              }
-              tone={upcomingAssessments > 0 ? "active" : "good"}
-            />
-            <SectionBlock
-              href="/academics?section=performance"
-              onClick={() => selectSection("performance")}
-              title="Performance / Attendance"
-              summary={`${activeClassesCount} active subjects · ${
-                overallAttendancePct !== null ? `${overallAttendancePct}% attendance` : "Tracking"
-              }`}
-              tone={attendanceAlert ? "warn" : "good"}
-            />
-          </section>
+          {/* RESPONSIVE DESKTOP 2-COLUMN / MOBILE STACK */}
+          <div className="space-y-4 md:space-y-0 md:grid md:grid-cols-2 md:gap-4 items-start">
+            {/* COLUMN 1: NEXT IN LINE & COURSES */}
+            <div className="space-y-4">
+              {/* 2. NEXT IN LINE */}
+              <NextInLineCard item={nextInLine} />
+
+              {/* 3. COURSES (FIRST-CLASS ENTITIES) */}
+              <section aria-label="Active Courses" className="rounded-xl border border-neutral-800/80 bg-neutral-900/30 p-3 space-y-2">
+                <div className="flex items-center justify-between">
+                  <h2 className="font-mono text-[10px] uppercase tracking-wider text-neutral-400 font-semibold">
+                    Active Courses ({activeCourses.length})
+                  </h2>
+                  <span className="font-mono text-[10px] text-neutral-500">Tap to open</span>
+                </div>
+
+                {activeCourses.length === 0 ? (
+                  <p className="font-mono text-xs text-neutral-500 py-1">
+                    No active courses found. Tap &quot;+ Add Course&quot; above to create one.
+                  </p>
+                ) : (
+                  <div className="divide-y divide-neutral-800/60 font-mono text-xs">
+                    {activeCourses.map((crs) => (
+                      <Link
+                        key={crs.id}
+                        href={`/academics/courses/${crs.id}`}
+                        className="py-2.5 flex items-center justify-between group hover:bg-neutral-800/30 px-1.5 rounded transition-colors"
+                      >
+                        <div className="min-w-0 pr-2">
+                          <div className="flex items-baseline gap-2">
+                            <span className="font-bold text-amber-300 group-hover:text-amber-200 transition-colors">
+                              {crs.code}
+                            </span>
+                            <span className="text-neutral-300 truncate text-[11px]">{crs.name}</span>
+                          </div>
+                          {crs.nextEvent && (
+                            <span className="text-[10px] text-neutral-500 block truncate">
+                              Next: {crs.nextEvent}
+                            </span>
+                          )}
+                        </div>
+
+                        <div className="text-right whitespace-nowrap">
+                          {crs.attendancePct !== null ? (
+                            <span
+                              className={`text-xs font-semibold ${
+                                crs.attendancePct >= crs.attendance_target
+                                  ? "text-emerald-400"
+                                  : "text-amber-400"
+                              }`}
+                            >
+                              {crs.attendancePct}%
+                            </span>
+                          ) : (
+                            <span className="text-neutral-500 text-[11px]">--</span>
+                          )}
+                        </div>
+                      </Link>
+                    ))}
+                  </div>
+                )}
+              </section>
+            </div>
+
+            {/* COLUMN 2: 4. GENERAL ACADEMIC SCHEDULE & DEDICATED DOORS */}
+            <div className="space-y-4">
+              <section aria-label="General Academic Schedule" className="space-y-2">
+                <div className="font-mono text-[10px] uppercase tracking-wider text-neutral-500 font-semibold px-1">
+                  General Academic Schedule &amp; Ledgers
+                </div>
+
+                <SectionBlock
+                  href="/academics?section=schedule"
+                  onClick={() => selectSection("schedule")}
+                  title="Timetable &amp; Schedule"
+                  summary="Recurring weekly timetable, extra classes &amp; reference screenshots"
+                  tone="active"
+                />
+
+                <SectionBlock
+                  href="/academics?section=deadlines"
+                  onClick={() => selectSection("deadlines")}
+                  title="Deadlines &amp; Assignments"
+                  summary={
+                    overdueDeadlinesCount > 0
+                      ? `${overdueDeadlinesCount} overdue · ${openDeadlines} pending deadlines`
+                      : `${openDeadlines} pending deadlines · Tap to manage`
+                  }
+                  tone={overdueDeadlinesCount > 0 ? "warn" : openDeadlines > 0 ? "active" : "good"}
+                />
+
+                <SectionBlock
+                  href="/academics?section=assessments"
+                  onClick={() => selectSection("assessments")}
+                  title="Assessments &amp; Scores"
+                  summary={`${upcomingAssessments} upcoming tests/quizzes · Historical marks &amp; targets`}
+                  tone={upcomingAssessments > 0 ? "active" : "good"}
+                />
+
+                <SectionBlock
+                  href="/academics?section=performance"
+                  onClick={() => selectSection("performance")}
+                  title="Performance &amp; Attendance"
+                  summary="Attendance logs across all courses and danger zone alerts"
+                  tone="good"
+                />
+              </section>
+            </div>
+          </div>
         </div>
       )}
 
-      {/* LEVEL 2: DEDICATED DETAIL VIEWS */}
-      {activeSection && activeSection !== "screenshots" && (
-        <section className="space-y-3">
-          <Link
-            href="/academics"
-            prefetch={false}
-            onClick={(e) => {
-              e.preventDefault();
-              handleBack();
-            }}
-            className="section-detail-back"
-          >
-            ← Back to Academics
-          </Link>
-          <AcademicsHub
-            initialClasses={classes}
-            initialAssessments={assessments}
-            initialDeadlines={deadlines}
-            initialOccurrences={occurrences}
-            defaultTab={defaultTab}
-          />
-        </section>
+      {/* LEVEL 2: DEDICATED FULL VIEWS */}
+      {activeSection && (
+        <div className="space-y-4">
+          <div className="flex items-center justify-between border-b border-neutral-800/80 pb-2">
+            <button
+              type="button"
+              onClick={handleBack}
+              className="inline-flex items-center gap-1.5 font-mono text-xs text-neutral-400 hover:text-white transition-colors"
+            >
+              &larr; Back to Academics
+            </button>
+            <span className="font-mono text-xs font-semibold uppercase tracking-wider text-neutral-300">
+              {activeSection === "deadlines"
+                ? "Academic Deadlines"
+                : activeSection === "schedule"
+                ? "Academic Timetable & Screenshots"
+                : activeSection === "assessments"
+                ? "Assessments & Tests"
+                : "Course Attendance & Performance"}
+            </span>
+          </div>
+
+          {activeSection === "schedule" ? (
+            <div className="space-y-6">
+              <AcademicsHub
+                defaultTab="timetable"
+                initialClasses={classes}
+                initialAssessments={assessments}
+                initialDeadlines={deadlines}
+                initialOccurrences={occurrences}
+              />
+              <AcademicScheduleScreenshots initialDocuments={screenshots} />
+            </div>
+          ) : (
+            <AcademicsHub
+              defaultTab={
+                activeSection === "deadlines"
+                  ? "deadlines"
+                  : activeSection === "assessments"
+                  ? "assessments"
+                  : "performance"
+              }
+              initialClasses={classes}
+              initialAssessments={assessments}
+              initialDeadlines={deadlines}
+              initialOccurrences={occurrences}
+            />
+          )}
+        </div>
       )}
 
-      {/* LEVEL 2: SCHEDULE SCREENSHOTS VIEW */}
-      {activeSection === "screenshots" && (
-        <section className="space-y-3">
-          <Link
-            href="/academics"
-            prefetch={false}
-            onClick={(e) => {
-              e.preventDefault();
-              handleBack();
-            }}
-            className="section-detail-back"
-          >
-            ← Back to Academics
-          </Link>
-          <AcademicScheduleScreenshots initialDocuments={screenshots} />
-        </section>
-      )}
     </>
   );
 }

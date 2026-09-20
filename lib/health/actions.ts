@@ -60,6 +60,134 @@ export async function saveFoodHabits(input: {
   }, { onConflict: "user_id,date" });
   if (error) throw error;
   revalidatePath("/review");
+  revalidatePath("/health");
+}
+
+export async function addFoodEntry(input: {
+  date?: string;
+  entry: { id?: string; time: string; food: string; notes?: string };
+}) {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) throw new Error("Not authenticated");
+
+  const date = input.date ?? todayISO();
+  const newEntry = {
+    id: input.entry.id ?? crypto.randomUUID(),
+    time: input.entry.time.trim(),
+    food: input.entry.food.trim(),
+    notes: input.entry.notes?.trim() || "",
+  };
+
+  const { data: existing } = await supabase
+    .from("food_habits")
+    .select("entries")
+    .eq("user_id", user.id)
+    .eq("date", date)
+    .maybeSingle();
+
+  const currentEntries = ((existing?.entries as unknown[]) ?? []) as {
+    id: string;
+    time: string;
+    food: string;
+    notes?: string;
+  }[];
+  const updatedEntries = [...currentEntries, newEntry];
+
+  const { error } = await supabase.from("food_habits").upsert(
+    {
+      user_id: user.id,
+      date,
+      entries: updatedEntries,
+      updated_at: new Date().toISOString(),
+    },
+    { onConflict: "user_id,date" }
+  );
+
+  if (error) throw error;
+  revalidatePath("/health");
+  revalidatePath("/review");
+  return newEntry;
+}
+
+export async function deleteFoodEntry(input: { date: string; entryId: string }) {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) throw new Error("Not authenticated");
+
+  const { data: existing } = await supabase
+    .from("food_habits")
+    .select("entries")
+    .eq("user_id", user.id)
+    .eq("date", input.date)
+    .maybeSingle();
+
+  const currentEntries = ((existing?.entries as unknown[]) ?? []) as {
+    id: string;
+    time: string;
+    food: string;
+    notes?: string;
+  }[];
+  const updatedEntries = currentEntries.filter((e) => e.id !== input.entryId);
+
+  const { error } = await supabase
+    .from("food_habits")
+    .update({ entries: updatedEntries, updated_at: new Date().toISOString() })
+    .eq("user_id", user.id)
+    .eq("date", input.date);
+
+  if (error) throw error;
+  revalidatePath("/health");
+  revalidatePath("/review");
+}
+
+export async function updateFoodEntry(input: {
+  date: string;
+  entry: { id: string; time: string; food: string; notes?: string };
+}) {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) throw new Error("Not authenticated");
+
+  const { data: existing } = await supabase
+    .from("food_habits")
+    .select("entries")
+    .eq("user_id", user.id)
+    .eq("date", input.date)
+    .maybeSingle();
+
+  const currentEntries = ((existing?.entries as unknown[]) ?? []) as {
+    id: string;
+    time: string;
+    food: string;
+    notes?: string;
+  }[];
+  const updatedEntries = currentEntries.map((e) =>
+    e.id === input.entry.id
+      ? {
+          ...e,
+          time: input.entry.time.trim(),
+          food: input.entry.food.trim(),
+          notes: input.entry.notes?.trim() || "",
+        }
+      : e
+  );
+
+  const { error } = await supabase
+    .from("food_habits")
+    .update({ entries: updatedEntries, updated_at: new Date().toISOString() })
+    .eq("user_id", user.id)
+    .eq("date", input.date);
+
+  if (error) throw error;
+  revalidatePath("/health");
+  revalidatePath("/review");
 }
 
 export async function deleteSleepPeriod(id: string) {

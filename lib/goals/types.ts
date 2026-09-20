@@ -6,12 +6,14 @@ export interface Goal {
   id: string;
   user_id: string;
   parent_id: string | null;
+  course_id?: string | null;
   level: GoalLevel;
   title: string;
   description: string | null;
   start_date: string | null;
   due_date: string | null;
   priority: number;
+  is_top3?: boolean;
   status: GoalStatus;
   progress: number;
   target_value: number | null;

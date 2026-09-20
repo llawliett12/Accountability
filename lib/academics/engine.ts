@@ -1,7 +1,7 @@
 // Pure academics logic: no DB, no AI, no framework imports. Same shape as
 // lib/goals/engine.ts and lib/scoring/engine.ts — testable in isolation.
 
-import type { AttendanceStatus, DeadlineStatus, AssessmentStatus } from "./types";
+import type { AttendanceStatus, DeadlineStatus, AssessmentStatus, OccurrenceStatus } from "./types";
 
 // ---------- attendance ----------
 
@@ -9,6 +9,7 @@ export type AttendanceZone = "safe" | "warning" | "danger";
 
 export interface AttendanceInput {
   attendance_status: AttendanceStatus | null;
+  status?: OccurrenceStatus;
 }
 
 export interface AttendanceStats {
@@ -23,14 +24,16 @@ export interface AttendanceStats {
 
 // "Present" and "late" both count as attended (you showed up); "absent" does
 // not; "excused" is tracked but excluded from the denominator entirely — an
-// excused absence should neither help nor hurt the percentage. Untracked
-// (null attendance_status) occurrences are excluded too, per the
+// excused absence should neither help nor hurt the percentage. Cancelled
+// occurrences do NOT count as attendance opportunities and are excluded.
+// Untracked (null attendance_status) occurrences are excluded too, per the
 // "untracked is not a failure" rule that applies everywhere else in this app.
 export function computeAttendanceStats(
   occurrences: AttendanceInput[],
   target: number
 ): AttendanceStats {
-  const tracked = occurrences.filter((o) => o.attendance_status !== null);
+  const activeOccurrences = occurrences.filter((o) => o.status !== "cancelled");
+  const tracked = activeOccurrences.filter((o) => o.attendance_status !== null);
   const countable = tracked.filter((o) => o.attendance_status !== "excused");
   const presentCount = countable.filter(
     (o) => o.attendance_status === "present" || o.attendance_status === "late"
@@ -47,7 +50,7 @@ export function computeAttendanceStats(
   }
 
   return {
-    totalOccurrences: occurrences.length,
+    totalOccurrences: activeOccurrences.length,
     trackedCount: tracked.length,
     presentCount,
     absentCount,

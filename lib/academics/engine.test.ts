@@ -52,6 +52,22 @@ describe("computeAttendanceStats", () => {
     expect(stats.percentage).toBe(100);
   });
 
+  it("excludes cancelled occurrences from attendance opportunities entirely", () => {
+    const stats = computeAttendanceStats(
+      [
+        { attendance_status: "present", status: "held" },
+        { attendance_status: null, status: "cancelled" },
+        { attendance_status: "absent", status: "cancelled" },
+      ],
+      75
+    );
+    // Cancelled occurrence must not count as total, tracked, or countable
+    expect(stats.totalOccurrences).toBe(1);
+    expect(stats.trackedCount).toBe(1);
+    expect(stats.presentCount).toBe(1);
+    expect(stats.percentage).toBe(100);
+  });
+
   it("classifies zones relative to target with a 10-point warning band", () => {
     const safe = computeAttendanceStats(
       Array(10).fill({ attendance_status: "present" }),

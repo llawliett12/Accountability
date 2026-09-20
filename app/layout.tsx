@@ -40,7 +40,7 @@ export default function RootLayout({
         <ServiceWorkerRegister />
         <OfflineSyncProvider>
           <OfflineBanner />
-          <main className="ledger-shell mx-auto max-w-md px-4 py-4">{children}</main>
+          <main className="ledger-shell mx-auto max-w-md md:max-w-5xl lg:max-w-6xl px-4 py-4">{children}</main>
         </OfflineSyncProvider>
         <BottomNav />
       </body>

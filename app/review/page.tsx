@@ -41,6 +41,7 @@ export default async function ReviewPage(props: { searchParams?: Promise<{ date?
     sleepPeriodsRes,
     completedActivitiesRes,
     meditationRes,
+    classOccurrencesRes,
   ] = await Promise.all([
     getOrCreateDailyPlan(selectedDate, user.id),
     fetchDailyMetrics(user.id, weekStart, selectedDate),
@@ -67,9 +68,8 @@ export default async function ReviewPage(props: { searchParams?: Promise<{ date?
       .order("bedtime", { ascending: false }),
     supabase
       .from("check_ins")
-      .select("id, actual_activity, timestamp, completed_at")
+      .select("id, actual_activity, timestamp, completed_at, entry_type, status")
       .eq("user_id", user.id)
-      .eq("status", "completed")
       .gte("timestamp", `${selectedDate}T00:00:00+05:30`)
       .lt("timestamp", `${tomorrow}T00:00:00+05:30`)
       .order("timestamp", { ascending: true }),
@@ -79,6 +79,13 @@ export default async function ReviewPage(props: { searchParams?: Promise<{ date?
       .eq("user_id", user.id)
       .eq("date", selectedDate)
       .maybeSingle(),
+    supabase
+      .from("class_occurrences")
+      .select(`
+        id, date, status, is_extra,
+        classes:class_id (name, default_start_time, default_end_time, slot_type)
+      `)
+      .eq("date", selectedDate),
   ]);
 
   // Map of date -> score
@@ -138,7 +145,36 @@ export default async function ReviewPage(props: { searchParams?: Promise<{ date?
       : null;
 
   const todayScore = scoreByDate.get(selectedDate) ?? null;
-  const completedActivities = (completedActivitiesRes.data ?? []) as { id: string; actual_activity: string; timestamp: string; completed_at: string | null }[];
+  const dayActivities = (completedActivitiesRes.data ?? []) as {
+    id: string;
+    actual_activity: string;
+    timestamp: string;
+    completed_at: string | null;
+    entry_type?: string;
+    status?: string;
+  }[];
+
+  interface OccurrenceRow {
+    id: string;
+    status: string;
+    classes: {
+      name: string;
+      default_start_time: string | null;
+      default_end_time: string | null;
+      slot_type?: string;
+    } | null;
+  }
+
+  const rawOccs = (classOccurrencesRes?.data ?? []) as unknown as OccurrenceRow[];
+  const dayOccurrences = rawOccs.map((row) => ({
+    id: row.id,
+    name: row.classes?.name ?? "Class",
+    startTime: row.classes?.default_start_time ?? "",
+    endTime: row.classes?.default_end_time ?? "",
+    status: row.status,
+    slotType: row.classes?.slot_type,
+  }));
+
 
   return (
     <div className="space-y-6 pb-6">
@@ -157,7 +193,8 @@ export default async function ReviewPage(props: { searchParams?: Promise<{ date?
         initialSection={section}
         avgSleepMinutes={avgSleepMinutes}
         foodHabitsData={foodHabitsRes.data ?? null}
-        completedActivities={completedActivities}
+        dayActivities={dayActivities}
+        dayOccurrences={dayOccurrences}
         tasksCompleted={tasksCompleted}
         tasksPlanned={tasksPlanned}
         averageAcademicPct={averageAcademicPct}
@@ -179,3 +216,4 @@ export default async function ReviewPage(props: { searchParams?: Promise<{ date?
     </div>
   );
 }
+

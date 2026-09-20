@@ -49,6 +49,14 @@ export default async function GoalsPage(props: { searchParams?: Promise<{ sectio
   const todayGoalIds = new Set((todayTasks ?? []).map((t) => t.goal_id as string));
   const todayGoals = goals.filter((g) => todayGoalIds.has(g.id));
 
+  const { data: coursesData } = await supabase.from("courses").select("id, code");
+  const courseCodeMap: Record<string, string> = {};
+  for (const c of coursesData ?? []) {
+    courseCodeMap[c.id] = c.code;
+  }
+
+  const top3Goals = active.filter((g) => g.is_top3);
+
   const parentOptions = goals.map((g) => ({ id: g.id, title: g.title, level: g.level }));
 
   return (
@@ -61,12 +69,15 @@ export default async function GoalsPage(props: { searchParams?: Promise<{ sectio
         initialSection={section}
         active={active}
         overdue={overdue}
+        top3Goals={top3Goals}
         todayGoals={todayGoals}
         upcoming={upcoming}
         recentlyCompleted={recentlyCompleted}
         parentOptions={parentOptions}
         goalsCount={goals.length}
+        courseCodeMap={courseCodeMap}
       />
     </div>
   );
 }
+

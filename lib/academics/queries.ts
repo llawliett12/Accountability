@@ -181,9 +181,11 @@ export async function fetchAcademicDashboard(userId: string): Promise<AcademicDa
   ]);
 
   const classNameById = new Map(classes.map((c) => [c.id, c.name]));
-
   const upcomingOcc = (upcomingOccRaw ?? []) as ClassOccurrence[];
-  const withNames = upcomingOcc.map((o) => ({ ...o, className: classNameById.get(o.class_id) ?? "Class" }));
+  const withNames = upcomingOcc.map((o) => ({
+    ...o,
+    className: (o.class_id ? classNameById.get(o.class_id) : null) ?? "Class",
+  }));
 
   const todayOccurrences = withNames.filter((o) => o.date === today);
   const nextOccurrence =

@@ -13,6 +13,7 @@ import SleepPeriodRows, { type SleepPeriod } from "@/components/SleepPeriodRows"
 import type { Task } from "@/lib/types";
 import type { DailyMetricsRow } from "@/lib/analytics/queries";
 import { DEFAULT_TIMEZONE } from "@/lib/date";
+import { computeInferredTimeline } from "@/lib/timeline";
 
 export type ReviewSection =
   | "activities"
@@ -39,7 +40,22 @@ interface ReviewSectionManagerProps {
   initialSection?: ReviewSection | null;
   avgSleepMinutes: number | null;
   foodHabitsData: { breakfast: boolean; lunch: boolean; dinner: boolean } | null;
-  completedActivities: { id: string; actual_activity: string; timestamp: string; completed_at: string | null }[];
+  dayActivities: {
+    id: string;
+    actual_activity: string;
+    timestamp: string;
+    completed_at: string | null;
+    entry_type?: string;
+    status?: string;
+  }[];
+  dayOccurrences?: {
+    id: string;
+    name: string;
+    startTime: string;
+    endTime: string;
+    status: string;
+    slotType?: string;
+  }[];
   tasksCompleted: number;
   tasksPlanned: number;
   averageAcademicPct: number | null;
@@ -65,7 +81,8 @@ export default function ReviewSectionManager({
   initialSection = null,
   avgSleepMinutes,
   foodHabitsData,
-  completedActivities,
+  dayActivities = [],
+  dayOccurrences = [],
   tasksCompleted,
   tasksPlanned,
   averageAcademicPct,
@@ -92,6 +109,8 @@ export default function ReviewSectionManager({
   }
   const scoreByDate = new Map(scoreByDateEntries);
   const screenTimeMap = new Map(screenTimeEntries);
+
+  const timelineBlocks = computeInferredTimeline(dayActivities, DEFAULT_TIMEZONE);
 
   useEffect(() => {
     const handlePopState = () => {
@@ -158,14 +177,18 @@ export default function ReviewSectionManager({
             </div>
           </section>
 
-          {/* 4 CLEAR NAVIGATION DOORS */}
+          {/* 5 CLEAR NAVIGATION DOORS */}
           <section aria-label="Review navigation" className="space-y-1">
             <SectionBlock
               href={`/review?date=${selectedDate}&section=activities`}
               onClick={() => selectSection("activities")}
               title="What I Did"
-              summary={`${completedActivities.length} completed activities · Start, end & duration`}
-              tone={completedActivities.length > 0 ? "good" : "neutral"}
+              summary={
+                timelineBlocks.length > 0
+                  ? `${timelineBlocks.length} activities logged · Inferred chronological timeline`
+                  : "No activity check-ins logged for this day"
+              }
+              tone={timelineBlocks.length > 0 ? "good" : "neutral"}
             />
             <SectionBlock
               href={`/review?date=${selectedDate}&section=daily-review`}
@@ -183,7 +206,7 @@ export default function ReviewSectionManager({
             <SectionBlock
               href={`/review?date=${selectedDate}&section=weekly`}
               onClick={() => selectSection("weekly")}
-              title="Weekly Performance"
+              title="Weekly Review"
               summary={`${tasksCompleted}/${tasksPlanned} tasks last 7 days · 🔥 ${bestStreak}d streak`}
               tone="active"
             />
@@ -196,9 +219,17 @@ export default function ReviewSectionManager({
               }, meals, meditation & closing notes`}
               tone="good"
             />
+            <SectionBlock
+              href={`/review?date=${selectedDate}&section=notes`}
+              onClick={() => selectSection("notes")}
+              title="Notes / Brain Dump"
+              summary={reviewNoteContent ? "Closing reflection recorded" : "No notes recorded yet · Tap to write"}
+              tone={reviewNoteContent ? "good" : "neutral"}
+            />
           </section>
         </div>
       )}
+
 
       {/* SECTION DETAIL: WEEKLY PERFORMANCE */}
       {activeSection === "weekly" && (
@@ -488,61 +519,119 @@ export default function ReviewSectionManager({
               </div>
             )}
 
-            {/* ACTIVITIES */}
+            {/* ACTIVITIES / TIMELINE OF WHAT I DID */}
             {activeSection === "activities" && (
-              <div className="space-y-1.5 pt-2">
-                <div className="text-xs font-medium text-neutral-300 font-mono">Completed Activities</div>
-                {completedActivities.length === 0 ? (
-                  <p className="text-xs text-neutral-500">No completed activities started on this day.</p>
+              <div className="space-y-4 pt-1">
+                <div className="flex items-center justify-between border-b border-neutral-800/80 pb-2">
+                  <span className="font-mono text-xs font-semibold uppercase tracking-wider text-neutral-300">
+                    Chronological Timeline
+                  </span>
+                  <span className="font-mono text-[11px] text-neutral-500">[{timelineBlocks.length} entries]</span>
+                </div>
+
+                {timelineBlocks.length === 0 ? (
+                  <div className="rounded-xl border border-neutral-800 bg-neutral-950/50 p-6 text-center text-xs text-neutral-500 font-sans space-y-1.5">
+                    <p>No activity check-ins recorded for this day.</p>
+                    <p className="text-[11px] text-neutral-600">
+                      Quick activities logged via &quot;What am I doing?&quot; on Home or Work Sessions appear here chronologically with inferred durations.
+                    </p>
+                  </div>
                 ) : (
-                  <div className="ledger-scroll">
-                    <table className="ledger-table min-w-[460px]">
-                      <thead>
-                        <tr>
-                          <th>S.No</th>
-                          <th>Work</th>
-                          <th>Started</th>
-                          <th>Ended</th>
-                          <th>Duration</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {completedActivities.map((entry, index) => {
-                          const start = new Date(entry.timestamp);
-                          const end = entry.completed_at ? new Date(entry.completed_at) : null;
-                          const minutes = end
-                            ? Math.max(0, Math.round((end.getTime() - start.getTime()) / 60_000))
-                            : null;
-                          return (
-                            <tr key={entry.id}>
-                              <td className="text-center font-mono text-[11px] text-neutral-500">{index + 1}</td>
-                              <td className="text-neutral-200">{entry.actual_activity}</td>
-                              <td className="font-mono text-[11px] text-neutral-500">
-                                {start.toLocaleTimeString([], {
-                                  timeZone: DEFAULT_TIMEZONE,
-                                  hour: "2-digit",
-                                  minute: "2-digit",
-                                })}
+                  <div className="relative border-l-2 border-neutral-800 ml-3 space-y-3 pl-4 pt-1">
+                    {timelineBlocks.map((block) => {
+                      const isJournal = block.entryType === "journal";
+                      return (
+                        <div key={block.id} className="relative group">
+                          {/* Timeline node */}
+                          <div
+                            className={`absolute -left-[21px] top-1.5 h-2.5 w-2.5 rounded-full border-2 ${
+                              isJournal
+                                ? "bg-neutral-900 border-neutral-500"
+                                : "bg-amber-400 border-neutral-950"
+                            }`}
+                          />
+
+                          <div className="rounded-xl border border-neutral-800/80 bg-neutral-900/50 p-3 hover:border-neutral-700 transition-colors">
+                            <div className="flex flex-wrap items-center justify-between gap-2 mb-1">
+                              <div className="flex items-center gap-2 font-mono text-xs">
+                                <span className="text-amber-300 font-bold">{block.startTime}</span>
+                                <span className="text-neutral-600">→</span>
+                                <span className="text-neutral-400">{block.endTime ?? "No later check-in"}</span>
+                                <span
+                                  className={`rounded px-1.5 py-0.2 text-[9px] font-semibold uppercase border ${
+                                    isJournal
+                                      ? "bg-neutral-800 text-neutral-400 border-neutral-700"
+                                      : "bg-amber-950/80 text-amber-300 border-amber-800/60"
+                                  }`}
+                                >
+                                  {isJournal ? "Journal" : "Work"}
+                                </span>
+                              </div>
+
+                              <span className="rounded bg-neutral-950 border border-neutral-800 px-2 py-0.5 text-[10px] font-mono font-semibold text-neutral-300">
+                                {block.durationLabel}
+                              </span>
+                            </div>
+
+                            <p className="text-xs text-neutral-200 font-sans">{block.activity}</p>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+
+                {/* Academic occurrences for this day */}
+                {dayOccurrences && dayOccurrences.length > 0 && (
+                  <div className="space-y-2 pt-4">
+                    <div className="font-mono text-xs font-semibold uppercase tracking-wider text-neutral-400">
+                      Academic Schedule for This Day
+                    </div>
+                    <div className="overflow-x-auto border border-neutral-800 rounded-xl bg-neutral-950/50">
+                      <table className="w-full text-left text-xs font-mono">
+                        <thead>
+                          <tr className="border-b border-neutral-800 text-[10px] text-neutral-500 bg-neutral-900/60">
+                            <th className="py-2 px-3">Time</th>
+                            <th className="py-2 px-3">Class / Course</th>
+                            <th className="py-2 px-3">Type</th>
+                            <th className="py-2 px-3 text-right">Status</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-neutral-800/60">
+                          {dayOccurrences.map((occ) => (
+                            <tr key={occ.id} className="hover:bg-neutral-900/30">
+                              <td className="py-2 px-3 text-amber-300">
+                                {occ.startTime ? `${occ.startTime} - ${occ.endTime}` : "Scheduled"}
                               </td>
-                              <td className="font-mono text-[11px] text-neutral-500">
-                                {end?.toLocaleTimeString([], {
-                                  timeZone: DEFAULT_TIMEZONE,
-                                  hour: "2-digit",
-                                  minute: "2-digit",
-                                }) ?? "--"}
+                              <td className="py-2 px-3 text-white font-medium">{occ.name}</td>
+                              <td className="py-2 px-3 text-neutral-400 uppercase text-[10px]">
+                                {occ.slotType || "Lecture"}
                               </td>
-                              <td className="font-mono text-[11px] text-neutral-300">
-                                {minutes === null ? "--" : `${minutes} min`}
+                              <td className="py-2 px-3 text-right">
+                                <span
+                                  className={`inline-block px-1.5 py-0.5 rounded text-[10px] font-semibold ${
+                                    occ.status === "attended"
+                                      ? "bg-emerald-950/80 text-emerald-300"
+                                      : occ.status === "missed"
+                                      ? "bg-red-950/80 text-red-300"
+                                      : occ.status === "cancelled"
+                                      ? "bg-neutral-800 text-neutral-500 line-through"
+                                      : "bg-neutral-900 text-neutral-400"
+                                  }`}
+                                >
+                                  {occ.status}
+                                </span>
                               </td>
                             </tr>
-                          );
-                        })}
-                      </tbody>
-                    </table>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
                   </div>
                 )}
               </div>
             )}
+
           </section>
         </>
       )}

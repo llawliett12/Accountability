@@ -329,6 +329,7 @@ export async function createCheckIn(input: {
     client_id: input.clientId ?? null,
     timestamp: startedAt,
     status: "ongoing",
+    entry_type: "work",
   };
   const { data: inserted, error: insertError } = await supabase.from("check_ins").insert(checkIn).select("id, actual_activity, timestamp, status, completed_at").maybeSingle();
   if (insertError && (!input.clientId || insertError.code !== "23505")) throw insertError;
@@ -349,6 +350,53 @@ export async function createCheckIn(input: {
   await bumpStreak(supabase, user.id, "tracking", todayISO());
 
   revalidatePath("/now");
+  revalidatePath("/");
+  revalidatePath("/review");
+  return saved;
+}
+
+export async function createQuickActivity(input: {
+  actual_activity: string;
+  timestamp?: string;
+  clientId?: string;
+}) {
+  const title = input.actual_activity.trim();
+  if (!title) throw new Error("Activity cannot be empty");
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) throw new Error("Not authenticated");
+
+  const startedAt = input.timestamp ?? new Date().toISOString();
+  const record = {
+    user_id: user.id,
+    actual_activity: title,
+    timestamp: startedAt,
+    status: "logged",
+    entry_type: "journal",
+    client_id: input.clientId ?? null,
+  };
+
+  const { data: inserted, error: insertError } = await supabase
+    .from("check_ins")
+    .insert(record)
+    .select("id, actual_activity, timestamp, status, entry_type")
+    .maybeSingle();
+
+  if (insertError && (!input.clientId || insertError.code !== "23505")) throw insertError;
+
+  const { data: saved, error: savedError } = inserted
+    ? { data: inserted, error: null }
+    : await supabase
+        .from("check_ins")
+        .select("id, actual_activity, timestamp, status, entry_type")
+        .eq("user_id", user.id)
+        .eq("client_id", input.clientId!)
+        .maybeSingle();
+
+  if (savedError || !saved) throw savedError ?? insertError ?? new Error("Quick activity was not saved");
+
   revalidatePath("/");
   revalidatePath("/review");
   return saved;
