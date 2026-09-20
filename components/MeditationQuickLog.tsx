@@ -109,7 +109,7 @@ export default function MeditationQuickLog({
               type="number"
               min="1"
               max="240"
-              placeholder="Minutes (e.g. 25)"
+              placeholder="Minutes"
               value={customMin}
               onChange={(e) => setCustomMin(e.target.value)}
               className="flex-1 rounded-lg bg-neutral-950 border border-neutral-800 px-3 py-1.5 text-xs text-white font-mono focus:border-amber-400 focus:outline-none"

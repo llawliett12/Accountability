@@ -4,6 +4,8 @@ import { useState, useTransition } from "react";
 import GoalsTable, { type GoalRowItem } from "@/components/GoalsTable";
 import { createGoal } from "@/lib/goals/actions";
 import type { GoalWithMeta } from "@/lib/goals/queries";
+import NotesSection from "@/components/NotesSection";
+import type { Note } from "@/lib/notes/types";
 
 export type GoalFilter = "all" | "active" | "top3" | "completed";
 export type GoalsSection = GoalFilter | string;
@@ -20,12 +22,14 @@ interface GoalsSectionManagerProps {
   goalsCount: number;
   courseCodeMap?: Record<string, string>;
   courses?: { id: string; code: string; name: string }[];
+  goalNotes?: Note[];
 }
 
 export default function GoalsSectionManager({
   allGoals,
   courseCodeMap = {},
   courses = [],
+  goalNotes = [],
 }: GoalsSectionManagerProps) {
   const [filter, setFilter] = useState<GoalFilter>("active");
   const [goalsList, setGoalsList] = useState<GoalRowItem[]>(allGoals);
@@ -176,7 +180,7 @@ export default function GoalsSectionManager({
             <input
               type="text"
               required
-              placeholder="What is the goal? e.g. Master dynamic programming..."
+              placeholder="Goal title..."
               value={newTitle}
               onChange={(e) => setNewTitle(e.target.value)}
               className="sm:col-span-6 rounded-lg border border-neutral-800 bg-neutral-900 px-3 py-2 text-neutral-100 placeholder-neutral-600 focus:outline-none focus:border-amber-400"
@@ -234,6 +238,9 @@ export default function GoalsSectionManager({
         initialGoals={filteredGoals}
         courseCodeMap={courseCodeMap}
       />
+
+      {/* 4. GOAL NOTES */}
+      <NotesSection title="Goal Notes" notes={goalNotes} category="goals" />
     </div>
   );
 }

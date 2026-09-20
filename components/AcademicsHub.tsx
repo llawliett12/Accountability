@@ -250,7 +250,7 @@ function AssessmentsSection({
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
             <input
               type="text"
-              placeholder="Test title (e.g. Midterm 1, Quiz 3)..."
+              placeholder="Assessment title..."
               value={title}
               onChange={(e) => setTitle(e.target.value)}
               className="rounded-lg bg-neutral-800 px-3 py-2 text-xs text-neutral-100 outline-none"

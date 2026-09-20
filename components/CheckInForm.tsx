@@ -39,7 +39,8 @@ export default function CheckInForm() {
       <div className="ledger-scroll"><table className="ledger-table min-w-[440px]"><thead><tr><th className="w-12">S.No</th><th>Activity</th><th className="w-48">State</th></tr></thead><tbody><tr className="ledger-add-row"><td className="text-center text-amber-400">+</td><td><input
         value={activity}
         onChange={(e) => setActivity(e.target.value)}
-        placeholder="e.g. reading DBMS notes"
+        placeholder="Activity..."
+        aria-label="Current activity"
         onKeyDown={(event) => { if (event.key === "Enter") log("on_track"); }}
       /></td><td className="whitespace-nowrap">
         <button

@@ -8,6 +8,8 @@ import MeditationQuickLog from "@/components/MeditationQuickLog";
 import SleepLogForm from "@/components/SleepLogForm";
 import type { FoodEntry, SleepLogRecord, MeditationLogRecord } from "@/lib/health/types";
 import type { ScreenTimeDay } from "@/lib/screen-time/queries";
+import NotesSection from "@/components/NotesSection";
+import type { Note } from "@/lib/notes/types";
 
 export type HealthSection = "sleep" | "food" | "meditation" | "screen-time" | "trends";
 
@@ -47,6 +49,8 @@ interface HealthSectionManagerProps {
   recentScreenTime: ScreenTimeDay[];
   // Trends
   sevenDayTrends: HealthDayTrend[];
+  // Notes
+  healthNotes?: Note[];
 }
 
 export default function HealthSectionManager({
@@ -62,6 +66,7 @@ export default function HealthSectionManager({
   todayScreenTime,
   recentScreenTime,
   sevenDayTrends,
+  healthNotes,
 }: HealthSectionManagerProps) {
   const [activeSection, setActiveSection] = useState<HealthSection | null>(initialSection);
   const [prevInitial, setPrevInitial] = useState(initialSection);
@@ -222,6 +227,13 @@ export default function HealthSectionManager({
               tone="good"
             />
           </section>
+
+          {/* HEALTH NOTES */}
+          <NotesSection
+            title="Health Notes"
+            notes={healthNotes ?? []}
+            category="health"
+          />
         </div>
       )}
 

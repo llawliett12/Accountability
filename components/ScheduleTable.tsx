@@ -147,7 +147,7 @@ export default function ScheduleTable({
         >
           <input
             type="text"
-            placeholder="Block title (e.g. Study, Workout)..."
+            placeholder="Block title..."
             value={blockTitle}
             onChange={(e) => setBlockTitle(e.target.value)}
             className="flex-1 min-w-[150px] bg-neutral-800 px-2.5 py-1.5 rounded text-neutral-100 placeholder:text-neutral-500 outline-none"

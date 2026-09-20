@@ -26,11 +26,11 @@ import type {
   Assessment,
   Deadline,
   ClassDef,
-  ClassOccurrence,
 } from "@/lib/academics/types";
 import type { Goal, GoalStatus } from "@/lib/goals/types";
 import type { Task, TaskStatus } from "@/lib/types";
 import TrashIcon from "@/components/icons/TrashIcon";
+import NotesSection from "@/components/NotesSection";
 
 const DAY_NAMES = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
@@ -58,7 +58,6 @@ export default function CourseDetailClient({ details }: { details: CourseDetailD
   const [deadlines, setDeadlines] = useState<Deadline[]>(details.deadlines);
   const [goals, setGoals] = useState<Goal[]>(details.linkedGoals);
   const [tasks, setTasks] = useState<Task[]>(details.linkedTasks);
-  const [occurrences] = useState<ClassOccurrence[]>(details.occurrences);
 
   // Notes editing state
   const [syllabusNotes, setSyllabusNotes] = useState(course.syllabus_notes ?? "");
@@ -615,7 +614,6 @@ export default function CourseDetailClient({ details }: { details: CourseDetailD
             <textarea
               value={syllabusNotes}
               onChange={(e) => setSyllabusNotes(e.target.value)}
-              placeholder="e.g. Chapter 4 Virtual Memory; Lecture 12 covered Paging algorithms..."
               rows={3}
               className="w-full rounded-lg border border-neutral-800 bg-neutral-950 p-2.5 text-xs text-neutral-100 placeholder-neutral-600 focus:border-neutral-600 focus:outline-none"
             />
@@ -628,7 +626,6 @@ export default function CourseDetailClient({ details }: { details: CourseDetailD
             <textarea
               value={nextExamNotes}
               onChange={(e) => setNextExamNotes(e.target.value)}
-              placeholder="e.g. Prof emphasized page replacement proofs and numerical problems from HW 3..."
               rows={3}
               className="w-full rounded-lg border border-neutral-800 bg-neutral-950 p-2.5 text-xs text-neutral-100 placeholder-neutral-600 focus:border-neutral-600 focus:outline-none"
             />
@@ -730,7 +727,6 @@ export default function CourseDetailClient({ details }: { details: CourseDetailD
                 <label className="font-mono text-[10px] text-neutral-400 block mb-1">Room / Location</label>
                 <input
                   type="text"
-                  placeholder="e.g. Hall A"
                   value={slotLocation}
                   onChange={(e) => setSlotLocation(e.target.value)}
                   className="w-full rounded bg-neutral-900 border border-neutral-800 px-2 py-1 text-neutral-100"
@@ -805,7 +801,6 @@ export default function CourseDetailClient({ details }: { details: CourseDetailD
                 <label className="font-mono text-[10px] text-neutral-400 block mb-1">Notes</label>
                 <input
                   type="text"
-                  placeholder="e.g. Makeup lecture"
                   value={extraNotes}
                   onChange={(e) => setExtraNotes(e.target.value)}
                   className="w-full rounded bg-neutral-900 border border-neutral-800 px-2 py-1 text-neutral-100"
@@ -909,7 +904,6 @@ export default function CourseDetailClient({ details }: { details: CourseDetailD
                 <input
                   type="text"
                   required
-                  placeholder="e.g. Midterm 1, Quiz 3"
                   value={assessmentTitle}
                   onChange={(e) => setAssessmentTitle(e.target.value)}
                   className="w-full rounded bg-neutral-900 border border-neutral-800 px-2 py-1 text-neutral-100"
@@ -943,7 +937,6 @@ export default function CourseDetailClient({ details }: { details: CourseDetailD
                 <label className="text-[10px] text-neutral-400 block mb-1">Target Score (Optional)</label>
                 <input
                   type="number"
-                  placeholder="e.g. 85"
                   value={assessmentTargetScore}
                   onChange={(e) => setAssessmentTargetScore(e.target.value)}
                   className="w-full rounded bg-neutral-900 border border-neutral-800 px-2 py-1 text-neutral-100"
@@ -953,7 +946,6 @@ export default function CourseDetailClient({ details }: { details: CourseDetailD
                 <label className="text-[10px] text-neutral-400 block mb-1">Notes</label>
                 <input
                   type="text"
-                  placeholder="e.g. Chapters 1-4"
                   value={assessmentNotes}
                   onChange={(e) => setAssessmentNotes(e.target.value)}
                   className="w-full rounded bg-neutral-900 border border-neutral-800 px-2 py-1 text-neutral-100"
@@ -999,7 +991,6 @@ export default function CourseDetailClient({ details }: { details: CourseDetailD
                 <input
                   type="text"
                   required
-                  placeholder="e.g. Homework 2 Submission"
                   value={deadlineTitle}
                   onChange={(e) => setDeadlineTitle(e.target.value)}
                   className="w-full rounded bg-neutral-900 border border-neutral-800 px-2 py-1 text-neutral-100"
@@ -1019,7 +1010,6 @@ export default function CourseDetailClient({ details }: { details: CourseDetailD
                 <label className="text-[10px] text-neutral-400 block mb-1">Category</label>
                 <input
                   type="text"
-                  placeholder="e.g. Assignment, Project"
                   value={deadlineCategory}
                   onChange={(e) => setDeadlineCategory(e.target.value)}
                   className="w-full rounded bg-neutral-900 border border-neutral-800 px-2 py-1 text-neutral-100"
@@ -1029,7 +1019,6 @@ export default function CourseDetailClient({ details }: { details: CourseDetailD
                 <label className="text-[10px] text-neutral-400 block mb-1">Notes</label>
                 <input
                   type="text"
-                  placeholder="e.g. Submit via portal by 11:59 PM"
                   value={deadlineNotes}
                   onChange={(e) => setDeadlineNotes(e.target.value)}
                   className="w-full rounded bg-neutral-900 border border-neutral-800 px-2 py-1 text-neutral-100"
@@ -1195,7 +1184,6 @@ export default function CourseDetailClient({ details }: { details: CourseDetailD
                   <input
                     type="text"
                     required
-                    placeholder="e.g. Master Virtual Memory proofs"
                     value={goalTitle}
                     onChange={(e) => setGoalTitle(e.target.value)}
                     className="w-full rounded bg-neutral-900 border border-neutral-800 px-2 py-1 text-neutral-100"
@@ -1229,7 +1217,6 @@ export default function CourseDetailClient({ details }: { details: CourseDetailD
                   <label className="text-[10px] text-neutral-400 block mb-1">Description / Notes</label>
                   <input
                     type="text"
-                    placeholder="Optional notes or context"
                     value={goalDescription}
                     onChange={(e) => setGoalDescription(e.target.value)}
                     className="w-full rounded bg-neutral-900 border border-neutral-800 px-2 py-1 text-neutral-100"
@@ -1368,7 +1355,6 @@ export default function CourseDetailClient({ details }: { details: CourseDetailD
                   <input
                     type="text"
                     required
-                    placeholder="e.g. Read Section 4.2 in textbook"
                     value={taskTitle}
                     onChange={(e) => setTaskTitle(e.target.value)}
                     className="w-full rounded bg-neutral-900 border border-neutral-800 px-2 py-1 text-neutral-100"
@@ -1392,7 +1378,6 @@ export default function CourseDetailClient({ details }: { details: CourseDetailD
                     <label className="text-[10px] text-neutral-400 block mb-1">Duration (min)</label>
                     <input
                       type="number"
-                      placeholder="e.g. 45"
                       value={taskDuration}
                       onChange={(e) => setTaskDuration(e.target.value)}
                       className="w-full rounded bg-neutral-900 border border-neutral-800 px-2 py-1 text-neutral-100"
@@ -1412,7 +1397,6 @@ export default function CourseDetailClient({ details }: { details: CourseDetailD
                   <label className="text-[10px] text-neutral-400 block mb-1">Notes</label>
                   <input
                     type="text"
-                    placeholder="Optional details"
                     value={taskNotes}
                     onChange={(e) => setTaskNotes(e.target.value)}
                     className="w-full rounded bg-neutral-900 border border-neutral-800 px-2 py-1 text-neutral-100"
@@ -1501,41 +1485,13 @@ export default function CourseDetailClient({ details }: { details: CourseDetailD
         </div>
       </section>
 
-      {/* 7. CLASS MEETINGS (WITHOUT CANCELLATION BUTTONS) */}
-      {occurrences.length > 0 && (
-        <section className="rounded-xl border border-neutral-800 bg-neutral-900/30 p-4 space-y-3">
-          <h2 className="font-mono text-xs font-semibold uppercase tracking-wider text-neutral-300">
-            Recent Class Meetings
-          </h2>
-          <div className="divide-y divide-neutral-800/60 font-mono text-xs max-h-60 overflow-y-auto">
-            {occurrences.slice(0, 15).map((occ) => (
-              <div key={occ.id} className="py-2 flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <span className="text-neutral-300 font-medium">{occ.date}</span>
-                  {occ.start_time && (
-                    <span className="text-neutral-500 text-[11px]">{occ.start_time.slice(0, 5)}</span>
-                  )}
-                  {occ.is_extra && (
-                    <span className="rounded bg-amber-950 px-1 py-0.2 text-[9px] text-amber-400 border border-amber-800/60">
-                      Extra
-                    </span>
-                  )}
-                </div>
-
-                <div className="flex items-center gap-2">
-                  {occ.attendance_status ? (
-                    <span className="text-emerald-400 text-[11px] capitalize font-medium">
-                      {occ.attendance_status}
-                    </span>
-                  ) : (
-                    <span className="text-neutral-500 text-[11px]">Scheduled</span>
-                  )}
-                </div>
-              </div>
-            ))}
-          </div>
-        </section>
-      )}
+      {/* 7. COURSE NOTES (CANONICAL PERSISTENT NOTES TIED TO COURSE_ID) */}
+      <NotesSection
+        title="Course Notes"
+        notes={details.courseNotes ?? []}
+        courseId={course.id}
+        category="course"
+      />
     </div>
   );
 }

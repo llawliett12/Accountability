@@ -102,7 +102,6 @@ export default function FoodLogTable({
             <label className="block text-[10px] font-mono text-neutral-500 mb-1">What I ate</label>
             <input
               type="text"
-              placeholder="e.g. Oatmeal with blueberries"
               value={food}
               onChange={(e) => setFood(e.target.value)}
               required
@@ -113,7 +112,6 @@ export default function FoodLogTable({
             <label className="block text-[10px] font-mono text-neutral-500 mb-1">Notes (optional)</label>
             <input
               type="text"
-              placeholder="e.g. Felt energized"
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
               className="w-full rounded-lg bg-neutral-950 border border-neutral-800 px-2.5 py-1.5 text-xs text-white placeholder-neutral-600 focus:border-amber-400 focus:outline-none"

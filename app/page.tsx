@@ -12,6 +12,7 @@ import {
   type GoalCandidate,
 } from "@/lib/nextInLine";
 import type { AcademicScheduleItem } from "@/components/TodayAcademicSchedule";
+import { fetchNotes } from "@/lib/notes/queries";
 
 export default async function MorningDashboard(props: {
   searchParams?: Promise<{ date?: string; section?: string }>;
@@ -48,6 +49,7 @@ export default async function MorningDashboard(props: {
     gridPlansRes,
     scoreRes,
     timetableScreenshotRes,
+    homeNotes,
   ] = await Promise.all([
     supabase
       .from("daily_plans")
@@ -140,6 +142,8 @@ export default async function MorningDashboard(props: {
       .eq("user_id", userId)
       .eq("kind", "timetable")
       .maybeSingle(),
+
+    fetchNotes(userId, { category: "general" }),
   ]);
 
   let weeklyTimetableImageUrl: string | null = null;
@@ -331,6 +335,7 @@ export default async function MorningDashboard(props: {
       maxStreak={maxStreak}
       scheduleItems={scheduleItems}
       verdict={verdict}
+      homeNotes={homeNotes}
     />
   );
 }

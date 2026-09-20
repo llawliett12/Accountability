@@ -1,5 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import { fetchGoalsWithProgress } from "@/lib/goals/queries";
+import { fetchNotes } from "@/lib/notes/queries";
 import { todayISO } from "@/lib/date";
 import GoalsSectionManager, { type GoalsSection } from "@/components/GoalsSectionManager";
 
@@ -16,7 +17,10 @@ export default async function GoalsPage(props: { searchParams?: Promise<{ sectio
   } = await supabase.auth.getUser();
   if (!user) return null;
 
-  const goals = await fetchGoalsWithProgress(user.id);
+  const [goals, goalNotes] = await Promise.all([
+    fetchGoalsWithProgress(user.id),
+    fetchNotes(user.id, { category: "goals" }),
+  ]);
   const today = todayISO();
 
   const active = goals.filter((g) => isActive(g.status));
@@ -80,6 +84,7 @@ export default async function GoalsPage(props: { searchParams?: Promise<{ sectio
         goalsCount={goals.length}
         courseCodeMap={courseCodeMap}
         courses={coursesData ?? []}
+        goalNotes={goalNotes}
       />
     </div>
   );

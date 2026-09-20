@@ -37,7 +37,7 @@ export default function DeadlineQuickAdd({
       <input
         value={title}
         onChange={(e) => setTitle(e.target.value)}
-        placeholder="Deadline (e.g. Essay draft due)"
+        placeholder="Deadline title"
         className="w-full rounded-lg bg-neutral-800 px-3 py-2 text-sm outline-none"
       />
       <input

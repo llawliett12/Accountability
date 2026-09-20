@@ -61,7 +61,6 @@ export default function WhatAmIDoingInput() {
           type="text"
           value={activity}
           onChange={(e) => setActivity(e.target.value)}
-          placeholder="e.g. studying, playing chess, lunch, reading..."
           disabled={pending}
           className="flex-1 rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2 text-xs text-neutral-100 placeholder-neutral-500 focus:border-neutral-600 focus:outline-none focus:ring-1 focus:ring-neutral-600"
         />

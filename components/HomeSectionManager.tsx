@@ -13,6 +13,8 @@ import WeeklyTimetableReference from "@/components/WeeklyTimetableReference";
 import type { AcademicScheduleItem } from "@/components/TodayAcademicSchedule";
 import HomeTop3Goals from "@/components/HomeTop3Goals";
 import WhatAmIDoingInput from "@/components/WhatAmIDoingInput";
+import NotesSection from "@/components/NotesSection";
+import type { Note } from "@/lib/notes/types";
 import type { NextInLineResult } from "@/lib/nextInLine";
 
 export type HomeSection = "priorities" | "current-work" | string;
@@ -34,6 +36,7 @@ interface HomeSectionManagerProps {
   maxStreak?: number;
   scheduleItems?: unknown;
   verdict?: unknown;
+  homeNotes?: Note[];
 }
 
 export default function HomeSectionManager({
@@ -48,6 +51,7 @@ export default function HomeSectionManager({
   weeklyTimetableImageUrl,
   isWeekday,
   nextInLine,
+  homeNotes,
 }: HomeSectionManagerProps) {
   const [activeSection, setActiveSection] = useState<HomeSection | null>(initialSection);
   const [prevInitial, setPrevInitial] = useState(initialSection);
@@ -169,6 +173,9 @@ export default function HomeSectionManager({
 
           {/* 5. WHAT AM I DOING? QUICK JOURNAL */}
           <WhatAmIDoingInput />
+
+          {/* 6. GENERAL NOTES */}
+          <NotesSection title="Notes" notes={homeNotes ?? []} category="general" />
         </div>
       )}
 

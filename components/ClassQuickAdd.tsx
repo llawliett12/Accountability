@@ -46,7 +46,7 @@ export default function ClassQuickAdd() {
       <input
         value={name}
         onChange={(e) => setName(e.target.value)}
-        placeholder="Class name (e.g. Linear Algebra)"
+        placeholder="Class name"
         className="w-full rounded-lg bg-neutral-800 px-3 py-2 text-sm outline-none"
       />
 

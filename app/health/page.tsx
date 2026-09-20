@@ -5,6 +5,7 @@ import HealthSectionManager, {
   type HealthDayTrend,
 } from "@/components/HealthSectionManager";
 import { fetchScreenTimeHistory } from "@/lib/screen-time/queries";
+import { fetchNotes } from "@/lib/notes/queries";
 import type { SleepLogRecord, MeditationLogRecord, FoodEntry } from "@/lib/health/types";
 
 export default async function HealthPage(props: {
@@ -143,6 +144,9 @@ export default async function HealthPage(props: {
     });
   }
 
+  // 7. Fetch health notes
+  const healthNotes = await fetchNotes(user.id, { category: "health" });
+
   return (
     <div className="space-y-6 pb-6">
       <header className="border-b border-neutral-800/80 pb-3">
@@ -162,6 +166,7 @@ export default async function HealthPage(props: {
         todayScreenTime={todayScreenTime}
         recentScreenTime={recentScreenTime}
         sevenDayTrends={sevenDayTrends}
+        healthNotes={healthNotes}
       />
     </div>
   );

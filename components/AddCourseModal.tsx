@@ -100,7 +100,6 @@ export default function AddCourseModal({
             <input
               type="text"
               required
-              placeholder="e.g. CS340"
               value={code}
               onChange={(e) => setCode(e.target.value)}
               className="w-full rounded-lg border border-neutral-800 bg-neutral-900 px-3 py-2 text-neutral-100 placeholder-neutral-600 focus:outline-none focus:border-neutral-600"
@@ -114,7 +113,6 @@ export default function AddCourseModal({
             <input
               type="text"
               required
-              placeholder="e.g. Operating Systems"
               value={name}
               onChange={(e) => setName(e.target.value)}
               className="w-full rounded-lg border border-neutral-800 bg-neutral-900 px-3 py-2 text-neutral-100 placeholder-neutral-600 focus:outline-none focus:border-neutral-600"
@@ -128,7 +126,6 @@ export default function AddCourseModal({
               </label>
               <input
                 type="text"
-                placeholder="e.g. Dr. Smith"
                 value={instructor}
                 onChange={(e) => setInstructor(e.target.value)}
                 className="w-full rounded-lg border border-neutral-800 bg-neutral-900 px-3 py-2 text-neutral-100 placeholder-neutral-600 focus:outline-none focus:border-neutral-600"
@@ -141,7 +138,6 @@ export default function AddCourseModal({
               </label>
               <input
                 type="text"
-                placeholder="e.g. Hall B"
                 value={location}
                 onChange={(e) => setLocation(e.target.value)}
                 className="w-full rounded-lg border border-neutral-800 bg-neutral-900 px-3 py-2 text-neutral-100 placeholder-neutral-600 focus:outline-none focus:border-neutral-600"

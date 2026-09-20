@@ -2,6 +2,7 @@ import { createClient } from "@/lib/supabase/server";
 import type { Course, ClassDef, Assessment, Deadline, ClassOccurrence } from "@/lib/academics/types";
 import type { Goal } from "@/lib/goals/types";
 import type { Task } from "@/lib/types";
+import type { Note } from "@/lib/notes/types";
 import { computeAttendanceStats, type AttendanceStats } from "@/lib/academics/engine";
 
 export async function fetchCourses(userId: string, activeOnly = true): Promise<Course[]> {
@@ -44,6 +45,7 @@ export interface CourseDetailData {
   linkedGoals: Goal[];
   linkedTasks: Task[];
   pastScores: { id: string; title: string; score: number; maxScore: number; date: string }[];
+  courseNotes: Note[];
 }
 
 export async function fetchCourseDetails(
@@ -63,6 +65,7 @@ export async function fetchCourseDetails(
     { data: deadlinesData },
     { data: goalsData },
     { data: tasksData },
+    { data: notesData },
   ] = await Promise.all([
     supabase
       .from("classes")
@@ -107,6 +110,13 @@ export async function fetchCourseDetails(
       .eq("course_id", courseId)
       .order("created_at", { ascending: false })
       .limit(20),
+
+    supabase
+      .from("notes")
+      .select("*")
+      .eq("user_id", userId)
+      .eq("course_id", courseId)
+      .order("created_at", { ascending: false }),
   ]);
 
   const slots = (slotsData ?? []) as ClassDef[];
@@ -115,6 +125,7 @@ export async function fetchCourseDetails(
   const deadlines = (deadlinesData ?? []) as Deadline[];
   const linkedGoals = (goalsData ?? []) as Goal[];
   const linkedTasks = (tasksData ?? []) as Task[];
+  const courseNotes = (notesData ?? []) as Note[];
 
   // Attendance stats (excludes cancelled occurrences via engine)
   const attendance = computeAttendanceStats(occurrences, course.attendance_target);
@@ -140,5 +151,6 @@ export async function fetchCourseDetails(
     linkedGoals,
     linkedTasks,
     pastScores,
+    courseNotes,
   };
 }

@@ -552,7 +552,6 @@ export default function CanonicalTimetable({
                 </label>
                 <input
                   type="text"
-                  placeholder="e.g. Hall A, Lab 3, Online"
                   value={slotLocation}
                   onChange={(e) => setSlotLocation(e.target.value)}
                   className="w-full rounded-lg border border-neutral-800 bg-neutral-900 px-3 py-2 text-neutral-100 placeholder-neutral-600 focus:outline-none focus:border-amber-400 text-xs"
@@ -670,7 +669,6 @@ export default function CanonicalTimetable({
                 </label>
                 <input
                   type="text"
-                  placeholder="e.g. Makeup lecture, doubt clearing"
                   value={extraNotes}
                   onChange={(e) => setExtraNotes(e.target.value)}
                   className="w-full rounded-lg border border-neutral-800 bg-neutral-900 px-3 py-2 text-neutral-100 placeholder-neutral-600 focus:outline-none focus:border-amber-400 text-xs"
