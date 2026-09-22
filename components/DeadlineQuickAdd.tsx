@@ -1,15 +1,18 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
 import { createDeadline } from "@/lib/academics/actions";
+import { todayISO } from "@/lib/date";
 
 export default function DeadlineQuickAdd({
   classes,
 }: {
   classes: { id: string; name: string }[];
 }) {
+  const router = useRouter();
   const [title, setTitle] = useState("");
-  const [dueDate, setDueDate] = useState("");
+  const [dueDate, setDueDate] = useState(todayISO());
   const [classId, setClassId] = useState("");
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
@@ -25,7 +28,8 @@ export default function DeadlineQuickAdd({
           class_id: classId || undefined,
         });
         setTitle("");
-        setDueDate("");
+        setDueDate(todayISO());
+        router.refresh();
       } catch (e) {
         setError(e instanceof Error ? e.message : "Could not create deadline");
       }

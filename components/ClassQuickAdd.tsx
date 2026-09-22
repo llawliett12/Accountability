@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
 import { createClass } from "@/lib/academics/actions";
 
 const DAYS = [
@@ -14,6 +15,7 @@ const DAYS = [
 ];
 
 export default function ClassQuickAdd() {
+  const router = useRouter();
   const [name, setName] = useState("");
   const [dayOfWeek, setDayOfWeek] = useState(1);
   const [startTime, setStartTime] = useState("09:00");
@@ -35,6 +37,7 @@ export default function ClassQuickAdd() {
           attendance_target: attendanceTarget,
         });
         setName("");
+        router.refresh();
       } catch (e) {
         setError(e instanceof Error ? e.message : "Could not create class");
       }

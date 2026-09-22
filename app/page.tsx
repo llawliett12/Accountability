@@ -1,6 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
-import { shiftDateISO, todayISO } from "@/lib/date";
-import type { ScheduleItem } from "@/components/ScheduleTable";
+import { todayISO } from "@/lib/date";
 import type { ActivityEntry } from "@/components/ActivityLedger";
 import type { Task } from "@/lib/types";
 import type { Goal } from "@/lib/goals/types";
@@ -13,6 +12,7 @@ import {
 } from "@/lib/nextInLine";
 import type { AcademicScheduleItem } from "@/components/TodayAcademicSchedule";
 import { fetchNotes } from "@/lib/notes/queries";
+import { getCachedSignedUrl } from "@/lib/storage/signedUrlCache";
 
 export default async function MorningDashboard(props: {
   searchParams?: Promise<{ date?: string; section?: string }>;
@@ -32,8 +32,6 @@ export default async function MorningDashboard(props: {
   const targetDateObj = new Date(date + "T00:00:00Z");
   const dayOfWeek = targetDateObj.getUTCDay();
 
-  const gridStart = shiftDateISO(date, -83);
-
   // Parallel fetch for Home
   const [
     planRes,
@@ -44,10 +42,6 @@ export default async function MorningDashboard(props: {
     deadlinesRes,
     goalsRes,
     checkInsRes,
-    verdictRes,
-    streaksRes,
-    gridPlansRes,
-    scoreRes,
     timetableScreenshotRes,
     homeNotes,
   ] = await Promise.all([
@@ -109,34 +103,6 @@ export default async function MorningDashboard(props: {
       .limit(5),
 
     supabase
-      .from("discipline_verdicts")
-      .select("label, explanation")
-      .eq("user_id", userId)
-      .order("date", { ascending: false })
-      .limit(1)
-      .maybeSingle(),
-
-    supabase
-      .from("streaks")
-      .select("streak_type, current_count")
-      .eq("user_id", userId),
-
-    supabase
-      .from("daily_plans")
-      .select("date, tasks(status)")
-      .eq("user_id", userId)
-      .gte("date", gridStart)
-      .lte("date", date)
-      .order("date", { ascending: true }),
-
-    supabase
-      .from("discipline_scores")
-      .select("date, score")
-      .eq("user_id", userId)
-      .gte("date", gridStart)
-      .lte("date", date),
-
-    supabase
       .from("academic_schedule_screenshots")
       .select("storage_path")
       .eq("user_id", userId)
@@ -146,13 +112,14 @@ export default async function MorningDashboard(props: {
     fetchNotes(userId, { category: "general" }),
   ]);
 
-  let weeklyTimetableImageUrl: string | null = null;
-  if (timetableScreenshotRes?.data?.storage_path) {
-    const { data: signedData } = await supabase.storage
-      .from("academic-schedule-screenshots")
-      .createSignedUrl(timetableScreenshotRes.data.storage_path, 60 * 60);
-    weeklyTimetableImageUrl = signedData?.signedUrl ?? null;
-  }
+  const weeklyTimetableImageUrl = timetableScreenshotRes?.data?.storage_path
+    ? await getCachedSignedUrl(
+        supabase,
+        "academic-schedule-screenshots",
+        timetableScreenshotRes.data.storage_path,
+        60 * 60
+      )
+    : null;
 
   const isWeekday = dayOfWeek >= 1 && dayOfWeek <= 5;
 
@@ -265,17 +232,6 @@ export default async function MorningDashboard(props: {
   // Sort schedule chronologically
   academicSchedule.sort((a, b) => a.startTime.localeCompare(b.startTime));
 
-  // Schedule items for deep ScheduleTable
-  const scheduleItems: ScheduleItem[] = academicSchedule.map((item) => ({
-    id: item.id,
-    type: "class",
-    title: `${item.courseCode} · ${item.slotType}`,
-    subtitle: item.location ?? undefined,
-    start_time: item.startTime,
-    end_time: item.endTime,
-    attendance_status: (occurrences.find((o) => o.id === item.id)?.attendance_status as ScheduleItem["attendance_status"]) ?? null,
-  }));
-
   // 3. Things To Be Done: Top 3 Goals
   const top3Goals = allGoals
     .filter((g) => g.is_top3)
@@ -288,31 +244,6 @@ export default async function MorningDashboard(props: {
     if (a.is_top3 && !b.is_top3) return -1;
     if (!a.is_top3 && b.is_top3) return 1;
     return (a.priority ?? 3) - (b.priority ?? 3);
-  });
-
-  // Streaks & discipline
-  const maxStreak = (streaksRes.data ?? []).reduce(
-    (max, s) => Math.max(max, s.current_count),
-    0
-  );
-  const currentStreak = (streaksRes.data ?? []).reduce(
-    (max, s) => Math.max(max, s.current_count),
-    0
-  );
-  const verdict = verdictRes.data;
-
-  // Grid
-  const scoreByDate = new Map(
-    (scoreRes.data ?? []).map((row) => [row.date, row.score as number | null])
-  );
-  const gridDays = (gridPlansRes.data ?? []).map((plan) => {
-    const planTasks = (plan.tasks ?? []) as { status: string }[];
-    return {
-      date: plan.date,
-      planned: planTasks.length,
-      completed: planTasks.filter((task) => task.status === "completed").length,
-      score: scoreByDate.get(plan.date) ?? null,
-    };
   });
 
   const checkIns = (checkInsRes.data ?? []) as ActivityEntry[];
@@ -330,11 +261,6 @@ export default async function MorningDashboard(props: {
       weeklyTimetableImageUrl={weeklyTimetableImageUrl}
       isWeekday={isWeekday}
       nextInLine={nextInLine}
-      gridDays={gridDays}
-      currentStreak={currentStreak}
-      maxStreak={maxStreak}
-      scheduleItems={scheduleItems}
-      verdict={verdict}
       homeNotes={homeNotes}
     />
   );

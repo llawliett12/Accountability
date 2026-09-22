@@ -1,17 +1,20 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
 import { createAssessment } from "@/lib/academics/actions";
 import type { AssessmentType } from "@/lib/academics/types";
+import { todayISO } from "@/lib/date";
 
 export default function AssessmentQuickAdd({
   classes,
 }: {
   classes: { id: string; name: string }[];
 }) {
+  const router = useRouter();
   const [title, setTitle] = useState("");
   const [type, setType] = useState<AssessmentType>("quiz");
-  const [date, setDate] = useState("");
+  const [date, setDate] = useState(todayISO());
   const [classId, setClassId] = useState("");
   const [targetScore, setTargetScore] = useState("");
   const [prepHours, setPrepHours] = useState("");
@@ -32,9 +35,10 @@ export default function AssessmentQuickAdd({
           prep_hours: prepHours ? Number(prepHours) : undefined,
         });
         setTitle("");
-        setDate("");
+        setDate(todayISO());
         setTargetScore("");
         setPrepHours("");
+        router.refresh();
       } catch (e) {
         setError(e instanceof Error ? e.message : "Could not create assessment");
       }

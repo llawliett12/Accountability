@@ -359,4 +359,48 @@ describe("Course Detail & Home Timetable UX Refinement Pass", () => {
       expect(revalidatePath).toHaveBeenCalledWith("/");
     });
   });
+
+  describe("7. Performance & Revalidation Audit QA", () => {
+    it("createDeadline revalidates /academics/deadlines, /academics/courses/[id], and /academics", async () => {
+      const { createDeadline } = await import("./academics/actions");
+      const { revalidatePath } = await import("next/cache");
+
+      await createDeadline({
+        title: "Homework 3",
+        due_date: "2026-10-15",
+        course_id: "course-cs330",
+      });
+
+      expect(revalidatePath).toHaveBeenCalledWith("/academics");
+      expect(revalidatePath).toHaveBeenCalledWith("/academics/deadlines");
+      expect(revalidatePath).toHaveBeenCalledWith("/academics/courses/course-cs330");
+    });
+
+    it("createGoal with course_id revalidates /academics/courses/[id]", async () => {
+      const { createGoal } = await import("./goals/actions");
+      const { revalidatePath } = await import("next/cache");
+
+      await createGoal({
+        title: "Pass midterm with A",
+        level: "week",
+        course_id: "course-cs330",
+      });
+
+      expect(revalidatePath).toHaveBeenCalledWith("/goals");
+      expect(revalidatePath).toHaveBeenCalledWith("/academics/courses/course-cs330");
+    });
+
+    it("createTask with course_id revalidates /academics/courses/[id]", async () => {
+      const { createTask } = await import("./actions");
+      const { revalidatePath } = await import("next/cache");
+
+      await createTask({
+        title: "Review lecture 3 slides",
+        course_id: "course-cs330",
+      });
+
+      expect(revalidatePath).toHaveBeenCalledWith("/plan");
+      expect(revalidatePath).toHaveBeenCalledWith("/academics/courses/course-cs330");
+    });
+  });
 });

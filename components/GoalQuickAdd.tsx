@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
 import { createGoal } from "@/lib/goals/actions";
 import { parentLevelFor } from "@/lib/goals/engine";
 import type { GoalLevel } from "@/lib/goals/types";
@@ -28,6 +29,7 @@ export default function GoalQuickAdd({
   defaultLevel?: GoalLevel;
   defaultParentId?: string;
 }) {
+  const router = useRouter();
   const [title, setTitle] = useState("");
   const [level, setLevel] = useState<GoalLevel>(defaultLevel);
   const [parentId, setParentId] = useState(defaultParentId ?? "");
@@ -57,6 +59,7 @@ export default function GoalQuickAdd({
         setTitle("");
         setParentId("");
         setDueDate("");
+        router.refresh();
       } catch (e) {
         setError(e instanceof Error ? e.message : "Could not create goal");
       }

@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
+import { invalidateSignedUrl } from "@/lib/storage/signedUrlCache";
 
 const BUCKET = "academic-schedule-screenshots";
 const KINDS = ["timetable", "quiz_schedule", "exam_schedule", "other"] as const;
@@ -28,18 +29,25 @@ export async function saveAcademicScheduleScreenshot(formData: FormData) {
   if (uploadError) throw uploadError;
   const { error } = await supabase.from("academic_schedule_screenshots").upsert({ user_id: user.id, kind, storage_path: storagePath, updated_at: new Date().toISOString() }, { onConflict: "user_id,kind" });
   if (error) { await supabase.storage.from(BUCKET).remove([storagePath]); throw error; }
-  if (existing?.storage_path) await supabase.storage.from(BUCKET).remove([existing.storage_path]);
+  if (existing?.storage_path) {
+    invalidateSignedUrl(BUCKET, existing.storage_path);
+    await supabase.storage.from(BUCKET).remove([existing.storage_path]);
+  }
+  invalidateSignedUrl(BUCKET, storagePath);
   revalidatePath("/academics");
+  revalidatePath("/");
 }
 
 export async function deleteAcademicScheduleScreenshot(kind: AcademicScreenshotKind) {
   const { supabase, user } = await userClient();
   const { data } = await supabase.from("academic_schedule_screenshots").select("storage_path").eq("user_id", user.id).eq("kind", kind).maybeSingle();
   if (data?.storage_path) {
+    invalidateSignedUrl(BUCKET, data.storage_path);
     const { error: storageError } = await supabase.storage.from(BUCKET).remove([data.storage_path]);
     if (storageError) throw storageError;
   }
   const { error } = await supabase.from("academic_schedule_screenshots").delete().eq("user_id", user.id).eq("kind", kind);
   if (error) throw error;
   revalidatePath("/academics");
+  revalidatePath("/");
 }

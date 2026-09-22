@@ -1,9 +1,10 @@
 import { createClient } from "@/lib/supabase/server";
 import {
-  fetchClassesWithAttendance,
+  fetchClasses,
   fetchAssessments,
   fetchDeadlines,
   fetchOccurrencesInRange,
+  type ClassWithAttendance,
 } from "@/lib/academics/queries";
 import { fetchCourses } from "@/lib/courses/queries";
 import { todayISO, shiftDateISO } from "@/lib/date";
@@ -14,6 +15,7 @@ import AcademicsSectionManager, {
 } from "@/components/AcademicsSectionManager";
 import { resolveAcademicsNextInLine, type AcademicCandidateEvent } from "@/lib/nextInLine";
 import { computeAttendanceStats, type AttendanceInput } from "@/lib/academics/engine";
+import { getCachedSignedUrl } from "@/lib/storage/signedUrlCache";
 
 export default async function AcademicsPage(props: {
   searchParams?: Promise<{ tab?: string; section?: string }>;
@@ -36,17 +38,17 @@ export default async function AcademicsPage(props: {
   const weekStart = shiftDateISO(today, -3);
   const weekEnd = shiftDateISO(today, 14);
 
-  // Parallel fetch: classes with computed attendance, assessments, deadlines, occurrences, courses
-  const [classes, assessments, deadlines, occurrences, coursesRaw, allOccurrencesRes, screenshotsRes] =
+  // Parallel fetch: classes, assessments, deadlines, occurrences in range, courses, all occurrences (once), screenshots
+  const [classesRaw, assessments, deadlines, occurrences, coursesRaw, allOccurrencesRes, screenshotsRes] =
     await Promise.all([
-      fetchClassesWithAttendance(user.id),
+      fetchClasses(user.id),
       fetchAssessments(user.id),
       fetchDeadlines(user.id),
       fetchOccurrencesInRange(user.id, weekStart, weekEnd),
       fetchCourses(user.id),
       supabase
         .from("class_occurrences")
-        .select("course_id, attendance_status, status")
+        .select("class_id, course_id, attendance_status, status")
         .eq("user_id", user.id),
       supabase
         .from("academic_schedule_screenshots")
@@ -56,33 +58,46 @@ export default async function AcademicsPage(props: {
 
   const screenshots = await Promise.all(
     (screenshotsRes.data ?? []).map(async (row) => {
-      const { data } = await supabase.storage
-        .from("academic-schedule-screenshots")
-        .createSignedUrl(row.storage_path, 60 * 60);
+      const signedUrl = await getCachedSignedUrl(
+        supabase,
+        "academic-schedule-screenshots",
+        row.storage_path,
+        60 * 60
+      );
       return {
         kind: row.kind as "timetable" | "quiz_schedule" | "exam_schedule" | "other",
-        url: data?.signedUrl ?? null,
+        url: signedUrl,
       };
     })
   );
 
-  // Map occurrences by course_id for attendance
+  // Map occurrences by class_id and course_id for attendance
   const occsByCourse = new Map<string, AttendanceInput[]>();
+  const occsByClass = new Map<string, AttendanceInput[]>();
   const rawAllOccs = (allOccurrencesRes.data ?? []) as {
+    class_id: string | null;
     course_id: string | null;
     attendance_status: AttendanceInput["attendance_status"];
     status?: AttendanceInput["status"];
   }[];
+
   for (const o of rawAllOccs) {
     if (o.course_id) {
       const list = occsByCourse.get(o.course_id) ?? [];
-      list.push({
-        attendance_status: o.attendance_status,
-        status: o.status,
-      });
+      list.push({ attendance_status: o.attendance_status, status: o.status });
       occsByCourse.set(o.course_id, list);
     }
+    if (o.class_id) {
+      const list = occsByClass.get(o.class_id) ?? [];
+      list.push({ attendance_status: o.attendance_status, status: o.status });
+      occsByClass.set(o.class_id, list);
+    }
   }
+
+  const classes: ClassWithAttendance[] = classesRaw.map((c) => ({
+    ...c,
+    attendance: computeAttendanceStats(occsByClass.get(c.id) ?? [], c.attendance_target),
+  }));
 
   // Next event per course
   const nextEventByCourse = new Map<string, string>();

@@ -197,6 +197,33 @@ export async function createAssessment(input: {
   prep_hours?: number;
 }) {
   const { supabase, user } = await requireUser();
+
+  let resolvedClassId = input.class_id ?? null;
+  let resolvedCourseId = input.course_id ?? null;
+
+  // Auto-resolve bidirectional relationship between course_id and class_id
+  if (resolvedCourseId && !resolvedClassId) {
+    const { data: cls } = await supabase
+      .from("classes")
+      .select("id")
+      .eq("course_id", resolvedCourseId)
+      .eq("user_id", user.id)
+      .maybeSingle();
+    if (cls?.id) {
+      resolvedClassId = cls.id;
+    }
+  } else if (resolvedClassId && !resolvedCourseId) {
+    const { data: cls } = await supabase
+      .from("classes")
+      .select("course_id")
+      .eq("id", resolvedClassId)
+      .eq("user_id", user.id)
+      .maybeSingle();
+    if (cls?.course_id) {
+      resolvedCourseId = cls.course_id;
+    }
+  }
+
   const { data, error } = await supabase
     .from("assessments")
     .insert({
@@ -204,8 +231,8 @@ export async function createAssessment(input: {
       title: input.title,
       type: input.type,
       date: input.date,
-      class_id: input.class_id ?? null,
-      course_id: input.course_id ?? null,
+      class_id: resolvedClassId,
+      course_id: resolvedCourseId,
       notes: input.notes ?? null,
       target_score: input.target_score ?? null,
       prep_hours: input.prep_hours ?? null,
@@ -213,9 +240,14 @@ export async function createAssessment(input: {
     .select("id")
     .single();
   if (error) throw error;
+
   revalidatePath("/academics");
   revalidatePath("/academics/assessments");
   revalidatePath("/academics/calendar");
+  if (resolvedCourseId) {
+    revalidatePath(`/academics/courses/${resolvedCourseId}`);
+  }
+  revalidatePath("/");
   return data.id as string;
 }
 
@@ -245,6 +277,14 @@ export async function recordAssessmentScore(
 ) {
   const { supabase, user } = await requireUser();
   const status: AssessmentStatus = "completed";
+
+  const { data: existing } = await supabase
+    .from("assessments")
+    .select("course_id")
+    .eq("id", assessmentId)
+    .eq("user_id", user.id)
+    .maybeSingle();
+
   const { error } = await supabase
     .from("assessments")
     .update({ score, max_score: maxScore, status })
@@ -254,6 +294,10 @@ export async function recordAssessmentScore(
   revalidatePath("/academics");
   revalidatePath("/academics/assessments");
   revalidatePath(`/academics/assessments/${assessmentId}`);
+  if (existing?.course_id) {
+    revalidatePath(`/academics/courses/${existing.course_id}`);
+  }
+  revalidatePath("/");
 }
 
 // ---------- deadlines ----------
@@ -267,35 +311,74 @@ export async function createDeadline(input: {
   notes?: string;
 }) {
   const { supabase, user } = await requireUser();
+
+  let resolvedClassId = input.class_id ?? null;
+  let resolvedCourseId = input.course_id ?? null;
+
+  if (resolvedCourseId && !resolvedClassId) {
+    const { data: cls } = await supabase
+      .from("classes")
+      .select("id")
+      .eq("course_id", resolvedCourseId)
+      .eq("user_id", user.id)
+      .maybeSingle();
+    if (cls?.id) {
+      resolvedClassId = cls.id;
+    }
+  } else if (resolvedClassId && !resolvedCourseId) {
+    const { data: cls } = await supabase
+      .from("classes")
+      .select("course_id")
+      .eq("id", resolvedClassId)
+      .eq("user_id", user.id)
+      .maybeSingle();
+    if (cls?.course_id) {
+      resolvedCourseId = cls.course_id;
+    }
+  }
+
   const { data, error } = await supabase
     .from("deadlines")
     .insert({
       user_id: user.id,
       title: input.title,
       due_date: input.due_date,
-      class_id: input.class_id ?? null,
-      course_id: input.course_id ?? null,
+      class_id: resolvedClassId,
+      course_id: resolvedCourseId,
       category: input.category ?? null,
       notes: input.notes ?? null,
     })
     .select("id")
     .single();
   if (error) throw error;
+
   revalidatePath("/academics");
+  revalidatePath("/academics/deadlines");
   revalidatePath("/academics/calendar");
+  if (resolvedCourseId) {
+    revalidatePath(`/academics/courses/${resolvedCourseId}`);
+  }
+  revalidatePath("/");
   return data.id as string;
 }
 
 export async function updateDeadlineStatus(deadlineId: string, status: DeadlineStatus) {
   const { supabase, user } = await requireUser();
-  const { error } = await supabase
+  const { data: existing, error } = await supabase
     .from("deadlines")
     .update({ status })
     .eq("id", deadlineId)
-    .eq("user_id", user.id);
+    .eq("user_id", user.id)
+    .select("course_id")
+    .maybeSingle();
   if (error) throw error;
   revalidatePath("/academics");
+  revalidatePath("/academics/deadlines");
   revalidatePath("/academics/calendar");
+  if (existing?.course_id) {
+    revalidatePath(`/academics/courses/${existing.course_id}`);
+  }
+  revalidatePath("/");
 }
 
 export async function updateAssessment(
@@ -328,10 +411,22 @@ export async function updateAssessment(
   if (error) throw error;
   revalidatePath("/academics");
   revalidatePath("/academics/assessments");
+  revalidatePath(`/academics/assessments/${assessmentId}`);
+  if (patch.course_id) {
+    revalidatePath(`/academics/courses/${patch.course_id}`);
+  }
+  revalidatePath("/");
 }
 
 export async function deleteAssessment(assessmentId: string) {
   const { supabase, user } = await requireUser();
+  const { data: existing } = await supabase
+    .from("assessments")
+    .select("course_id")
+    .eq("id", assessmentId)
+    .eq("user_id", user.id)
+    .maybeSingle();
+
   const { error } = await supabase
     .from("assessments")
     .delete()
@@ -340,6 +435,11 @@ export async function deleteAssessment(assessmentId: string) {
   if (error) throw error;
   revalidatePath("/academics");
   revalidatePath("/academics/assessments");
+  revalidatePath("/academics/calendar");
+  if (existing?.course_id) {
+    revalidatePath(`/academics/courses/${existing.course_id}`);
+  }
+  revalidatePath("/");
 }
 
 export async function updateDeadline(
@@ -362,11 +462,23 @@ export async function updateDeadline(
     .eq("user_id", user.id);
   if (error) throw error;
   revalidatePath("/academics");
+  revalidatePath("/academics/deadlines");
   revalidatePath("/academics/calendar");
+  if (patch.course_id) {
+    revalidatePath(`/academics/courses/${patch.course_id}`);
+  }
+  revalidatePath("/");
 }
 
 export async function deleteDeadline(deadlineId: string) {
   const { supabase, user } = await requireUser();
+  const { data: existing } = await supabase
+    .from("deadlines")
+    .select("course_id")
+    .eq("id", deadlineId)
+    .eq("user_id", user.id)
+    .maybeSingle();
+
   const { error } = await supabase
     .from("deadlines")
     .delete()
@@ -374,7 +486,12 @@ export async function deleteDeadline(deadlineId: string) {
     .eq("user_id", user.id);
   if (error) throw error;
   revalidatePath("/academics");
+  revalidatePath("/academics/deadlines");
   revalidatePath("/academics/calendar");
+  if (existing?.course_id) {
+    revalidatePath(`/academics/courses/${existing.course_id}`);
+  }
+  revalidatePath("/");
 }
 
 export async function updateClass(

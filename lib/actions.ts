@@ -113,6 +113,9 @@ export async function createTask(input: {
 
   revalidatePath("/plan");
   revalidatePath("/academics");
+  if (input.course_id) {
+    revalidatePath(`/academics/courses/${input.course_id}`);
+  }
   revalidatePath("/");
   return created;
 }
@@ -129,7 +132,7 @@ export async function updateTaskStatus(taskId: string, status: string, clientId?
     .update({ status, updated_at: new Date().toISOString() })
     .eq("id", taskId)
     .eq("user_id", user.id)
-    .select("goal_id")
+    .select("goal_id, course_id")
     .single();
 
   if (error) throw error;
@@ -180,6 +183,9 @@ export async function updateTaskStatus(taskId: string, status: string, clientId?
 
   revalidatePath("/plan");
   revalidatePath("/academics");
+  if (updated?.course_id) {
+    revalidatePath(`/academics/courses/${updated.course_id}`);
+  }
   revalidatePath("/");
   return { success: true, taskId, status };
 }
@@ -212,7 +218,7 @@ export async function updateTask(
     })
     .eq("id", taskId)
     .eq("user_id", user.id)
-    .select("goal_id")
+    .select("goal_id, course_id")
     .single();
 
   if (error) throw error;
@@ -227,6 +233,10 @@ export async function updateTask(
 
   revalidatePath("/plan");
   revalidatePath("/academics");
+  const affectedCourseId = patch.course_id || updated?.course_id;
+  if (affectedCourseId) {
+    revalidatePath(`/academics/courses/${affectedCourseId}`);
+  }
   revalidatePath("/");
   return updated;
 }
@@ -240,7 +250,7 @@ export async function deleteTask(taskId: string) {
 
   const { data: task } = await supabase
     .from("tasks")
-    .select("goal_id")
+    .select("goal_id, course_id")
     .eq("id", taskId)
     .eq("user_id", user.id)
     .maybeSingle();
@@ -263,6 +273,9 @@ export async function deleteTask(taskId: string) {
 
   revalidatePath("/plan");
   revalidatePath("/academics");
+  if (task?.course_id) {
+    revalidatePath(`/academics/courses/${task.course_id}`);
+  }
   revalidatePath("/");
   return { success: true, taskId };
 }

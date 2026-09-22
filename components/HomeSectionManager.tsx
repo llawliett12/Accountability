@@ -31,11 +31,6 @@ interface HomeSectionManagerProps {
   weeklyTimetableImageUrl?: string | null;
   isWeekday?: boolean;
   nextInLine: NextInLineResult | null;
-  gridDays?: unknown;
-  currentStreak?: number;
-  maxStreak?: number;
-  scheduleItems?: unknown;
-  verdict?: unknown;
   homeNotes?: Note[];
 }
 

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
 import { recordAssessmentScore } from "@/lib/academics/actions";
 
 export default function AssessmentScoreForm({
@@ -12,10 +13,12 @@ export default function AssessmentScoreForm({
   existingScore: number | null;
   existingMax: number | null;
 }) {
+  const router = useRouter();
   const [score, setScore] = useState(existingScore?.toString() ?? "");
   const [maxScore, setMaxScore] = useState(existingMax?.toString() ?? "");
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
+  const [saved, setSaved] = useState(false);
 
   function submit() {
     const s = Number(score);
@@ -28,6 +31,9 @@ export default function AssessmentScoreForm({
     startTransition(async () => {
       try {
         await recordAssessmentScore(assessmentId, s, m);
+        setSaved(true);
+        setTimeout(() => setSaved(false), 2000);
+        router.refresh();
       } catch (e) {
         setError(e instanceof Error ? e.message : "Could not save score");
       }
@@ -59,7 +65,7 @@ export default function AssessmentScoreForm({
           disabled={pending}
           className="ml-auto rounded-lg bg-white px-3 py-1.5 text-sm font-medium text-neutral-950 disabled:opacity-50"
         >
-          Save
+          {saved ? "Saved!" : pending ? "Saving..." : "Save"}
         </button>
       </div>
       {error && <p className="text-xs text-red-400">{error}</p>}

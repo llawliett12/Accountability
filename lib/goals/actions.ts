@@ -67,6 +67,9 @@ export async function createGoal(input: {
   await recomputeAndStoreProgress(user.id);
   revalidatePath("/goals");
   revalidatePath("/academics");
+  if (input.course_id) {
+    revalidatePath(`/academics/courses/${input.course_id}`);
+  }
   revalidatePath("/");
   return data.id as string;
 }
@@ -104,6 +107,9 @@ export async function updateGoal(
   revalidatePath("/goals");
   revalidatePath(`/goals/${goalId}`);
   revalidatePath("/academics");
+  if (input.course_id) {
+    revalidatePath(`/academics/courses/${input.course_id}`);
+  }
   revalidatePath("/");
 }
 
@@ -134,6 +140,13 @@ export async function deleteGoal(goalId: string) {
   } = await supabase.auth.getUser();
   if (!user) throw new Error("Not authenticated");
 
+  const { data: existingGoal } = await supabase
+    .from("goals")
+    .select("course_id")
+    .eq("id", goalId)
+    .eq("user_id", user.id)
+    .maybeSingle();
+
   // Child goals cascade via the FK (on delete cascade); linked tasks keep
   // existing via goal_id -> set null, so task history is never destroyed.
   const { error } = await supabase.from("goals").delete().eq("id", goalId).eq("user_id", user.id);
@@ -143,6 +156,9 @@ export async function deleteGoal(goalId: string) {
   revalidatePath("/goals");
   revalidatePath("/plan");
   revalidatePath("/academics");
+  if (existingGoal?.course_id) {
+    revalidatePath(`/academics/courses/${existingGoal.course_id}`);
+  }
   revalidatePath("/");
 }
 

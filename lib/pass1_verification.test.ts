@@ -46,6 +46,7 @@ const mockSupabase = {
       upsert: vi.fn().mockReturnThis(),
       eq: vi.fn().mockReturnThis(),
       single: vi.fn().mockResolvedValue({ data: { id: "test-id" }, error: null }),
+      maybeSingle: vi.fn().mockResolvedValue({ data: { id: "test-id" }, error: null }),
     };
   }),
 };

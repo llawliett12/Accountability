@@ -1,7 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
-import { useRouter } from "next/navigation";
+import { useState, useTransition, useEffect } from "react";
 import Link from "next/link";
 import type { CourseDetailData } from "@/lib/courses/queries";
 import {
@@ -32,6 +31,7 @@ import type { Goal, GoalStatus } from "@/lib/goals/types";
 import type { Task, TaskStatus } from "@/lib/types";
 import TrashIcon from "@/components/icons/TrashIcon";
 import NotesSection from "@/components/NotesSection";
+import { todayISO } from "@/lib/date";
 
 const DAY_NAMES = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
@@ -48,8 +48,772 @@ const PRIORITY_BADGES: Record<number, { label: string; class: string }> = {
   5: { label: "P5", class: "bg-neutral-800 text-neutral-500 border-neutral-700" },
 };
 
+// --- ISOLATED MODAL SUBCOMPONENTS (PREVENTS ROOT RE-RENDERS ON INPUT TYPING) ---
+
+function AddSlotModal({
+  defaultLocation,
+  onClose,
+  onSubmit,
+}: {
+  defaultLocation: string;
+  onClose: () => void;
+  onSubmit: (input: {
+    day_of_week: number;
+    start_time: string;
+    end_time: string;
+    slot_type: SlotType;
+    location?: string;
+  }) => Promise<void>;
+}) {
+  const [slotDay, setSlotDay] = useState(1);
+  const [slotStart, setSlotStart] = useState("09:00");
+  const [slotEnd, setSlotEnd] = useState("10:00");
+  const [slotType, setSlotType] = useState<SlotType>("lecture");
+  const [slotLocation, setSlotLocation] = useState(defaultLocation);
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError(null);
+    setSubmitting(true);
+    try {
+      await onSubmit({
+        day_of_week: slotDay,
+        start_time: slotStart,
+        end_time: slotEnd,
+        slot_type: slotType,
+        location: slotLocation.trim() || undefined,
+      });
+      onClose();
+    } catch (err: any) {
+      setError(err?.message || "Failed to add slot");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <form onSubmit={handleSubmit} className="rounded-lg border border-neutral-700 bg-neutral-950 p-3 space-y-3 text-xs">
+      <div className="flex items-center justify-between">
+        <span className="font-mono font-semibold text-neutral-200">Add Recurring Slot</span>
+        <button type="button" onClick={onClose} className="text-neutral-500 hover:text-white">
+          &times;
+        </button>
+      </div>
+      {error && (
+        <div className="rounded border border-rose-800/80 bg-rose-950/60 p-2 text-rose-300 text-[11px] font-mono">
+          {error}
+        </div>
+      )}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+        <div>
+          <label className="font-mono text-[10px] text-neutral-400 block mb-1">Day</label>
+          <select
+            value={slotDay}
+            onChange={(e) => setSlotDay(parseInt(e.target.value, 10))}
+            className="w-full rounded bg-neutral-900 border border-neutral-800 px-2 py-1.5 text-neutral-100"
+          >
+            <option value={1}>Monday</option>
+            <option value={2}>Tuesday</option>
+            <option value={3}>Wednesday</option>
+            <option value={4}>Thursday</option>
+            <option value={5}>Friday</option>
+          </select>
+        </div>
+        <div>
+          <label className="font-mono text-[10px] text-neutral-400 block mb-1">Type</label>
+          <select
+            value={slotType}
+            onChange={(e) => setSlotType(e.target.value as SlotType)}
+            className="w-full rounded bg-neutral-900 border border-neutral-800 px-2 py-1.5 text-neutral-100"
+          >
+            <option value="lecture">Lecture</option>
+            <option value="lab">Lab</option>
+            <option value="tutorial">Tutorial</option>
+            <option value="seminar">Seminar</option>
+            <option value="other">Other</option>
+          </select>
+        </div>
+        <div>
+          <label className="font-mono text-[10px] text-neutral-400 block mb-1">Start Time</label>
+          <input
+            type="time"
+            required
+            value={slotStart}
+            onChange={(e) => setSlotStart(e.target.value)}
+            className="w-full rounded bg-neutral-900 border border-neutral-800 px-2 py-1 text-neutral-100"
+          />
+        </div>
+        <div>
+          <label className="font-mono text-[10px] text-neutral-400 block mb-1">End Time</label>
+          <input
+            type="time"
+            required
+            value={slotEnd}
+            onChange={(e) => setSlotEnd(e.target.value)}
+            className="w-full rounded bg-neutral-900 border border-neutral-800 px-2 py-1 text-neutral-100"
+          />
+        </div>
+        <div className="col-span-2 sm:col-span-4">
+          <label className="font-mono text-[10px] text-neutral-400 block mb-1">Room / Location</label>
+          <input
+            type="text"
+            value={slotLocation}
+            onChange={(e) => setSlotLocation(e.target.value)}
+            className="w-full rounded bg-neutral-900 border border-neutral-800 px-2 py-1 text-neutral-100"
+          />
+        </div>
+      </div>
+      <div className="flex justify-end gap-2 pt-1 border-t border-neutral-800/80">
+        <button
+          type="button"
+          onClick={onClose}
+          className="px-2.5 py-1 font-mono text-neutral-400 hover:text-white"
+        >
+          Cancel
+        </button>
+        <button
+          type="submit"
+          disabled={submitting}
+          className="rounded bg-neutral-100 px-3 py-1 font-mono font-semibold text-neutral-950 hover:bg-neutral-200 disabled:opacity-50"
+        >
+          {submitting ? "Saving..." : "Save Slot"}
+        </button>
+      </div>
+    </form>
+  );
+}
+
+function AddExtraClassModal({
+  onClose,
+  onSubmit,
+}: {
+  onClose: () => void;
+  onSubmit: (input: {
+    date: string;
+    start_time: string;
+    end_time: string;
+    notes?: string;
+  }) => Promise<void>;
+}) {
+  const [extraDate, setExtraDate] = useState(todayISO());
+  const [extraStart, setExtraStart] = useState("14:00");
+  const [extraEnd, setExtraEnd] = useState("15:00");
+  const [extraNotes, setExtraNotes] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!extraDate) return;
+    setError(null);
+    setSubmitting(true);
+    try {
+      await onSubmit({
+        date: extraDate,
+        start_time: extraStart,
+        end_time: extraEnd,
+        notes: extraNotes.trim() || undefined,
+      });
+      onClose();
+    } catch (err: any) {
+      setError(err?.message || "Failed to schedule extra class");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <form onSubmit={handleSubmit} className="rounded-lg border border-amber-800/80 bg-neutral-950 p-3 space-y-3 text-xs">
+      <div className="flex items-center justify-between">
+        <span className="font-mono font-medium text-amber-300">Schedule One-Off Extra Class</span>
+        <button type="button" onClick={onClose} className="text-neutral-500 hover:text-white">
+          &times;
+        </button>
+      </div>
+      {error && (
+        <div className="rounded border border-rose-800/80 bg-rose-950/60 p-2 text-rose-300 text-[11px] font-mono">
+          {error}
+        </div>
+      )}
+      <div className="grid grid-cols-1 sm:grid-cols-4 gap-2">
+        <div>
+          <label className="font-mono text-[10px] text-neutral-400 block mb-1">Date *</label>
+          <input
+            type="date"
+            required
+            value={extraDate}
+            onChange={(e) => setExtraDate(e.target.value)}
+            className="w-full rounded bg-neutral-900 border border-neutral-800 px-2 py-1 text-neutral-100"
+          />
+        </div>
+        <div>
+          <label className="font-mono text-[10px] text-neutral-400 block mb-1">Start Time *</label>
+          <input
+            type="time"
+            required
+            value={extraStart}
+            onChange={(e) => setExtraStart(e.target.value)}
+            className="w-full rounded bg-neutral-900 border border-neutral-800 px-2 py-1 text-neutral-100"
+          />
+        </div>
+        <div>
+          <label className="font-mono text-[10px] text-neutral-400 block mb-1">End Time *</label>
+          <input
+            type="time"
+            required
+            value={extraEnd}
+            onChange={(e) => setExtraEnd(e.target.value)}
+            className="w-full rounded bg-neutral-900 border border-neutral-800 px-2 py-1 text-neutral-100"
+          />
+        </div>
+        <div>
+          <label className="font-mono text-[10px] text-neutral-400 block mb-1">Notes</label>
+          <input
+            type="text"
+            value={extraNotes}
+            onChange={(e) => setExtraNotes(e.target.value)}
+            className="w-full rounded bg-neutral-900 border border-neutral-800 px-2 py-1 text-neutral-100"
+          />
+        </div>
+      </div>
+      <div className="flex justify-end gap-2 pt-1 border-t border-neutral-800/80">
+        <button
+          type="button"
+          onClick={onClose}
+          className="px-2.5 py-1 font-mono text-neutral-400 hover:text-white"
+        >
+          Cancel
+        </button>
+        <button
+          type="submit"
+          disabled={submitting || !extraDate}
+          className="rounded bg-amber-400 px-3 py-1 font-mono font-semibold text-neutral-950 hover:bg-amber-300 disabled:opacity-50"
+        >
+          {submitting ? "Saving..." : "Save Extra Class"}
+        </button>
+      </div>
+    </form>
+  );
+}
+
+function AddAssessmentModal({
+  onClose,
+  onSubmit,
+}: {
+  onClose: () => void;
+  onSubmit: (input: {
+    title: string;
+    type: AssessmentType;
+    date: string;
+    target_score?: number;
+    notes?: string;
+  }) => Promise<void>;
+}) {
+  const [assessmentTitle, setAssessmentTitle] = useState("");
+  const [assessmentType, setAssessmentType] = useState<AssessmentType>("quiz");
+  const [assessmentDate, setAssessmentDate] = useState(todayISO());
+  const [assessmentTargetScore, setAssessmentTargetScore] = useState("");
+  const [assessmentNotes, setAssessmentNotes] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!assessmentTitle.trim() || !assessmentDate) return;
+
+    let parsedTargetScore: number | undefined = undefined;
+    if (assessmentTargetScore.trim()) {
+      const val = parseFloat(assessmentTargetScore);
+      if (isNaN(val)) {
+        setError("Target score must be a valid number");
+        return;
+      }
+      parsedTargetScore = val;
+    }
+
+    setError(null);
+    setSubmitting(true);
+    try {
+      await onSubmit({
+        title: assessmentTitle.trim(),
+        type: assessmentType,
+        date: assessmentDate,
+        target_score: parsedTargetScore,
+        notes: assessmentNotes.trim() || undefined,
+      });
+      onClose();
+    } catch (err: any) {
+      setError(err?.message || "Failed to add academic event");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <form onSubmit={handleSubmit} className="rounded-lg border border-neutral-700 bg-neutral-950 p-3 space-y-3 text-xs font-mono">
+      <div className="flex items-center justify-between">
+        <span className="font-semibold text-neutral-200">Add Academic Event / Assessment</span>
+        <button type="button" onClick={onClose} className="text-neutral-500 hover:text-white">
+          &times;
+        </button>
+      </div>
+      {error && (
+        <div className="rounded border border-rose-800/80 bg-rose-950/60 p-2 text-rose-300 text-[11px] font-mono">
+          {error}
+        </div>
+      )}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+        <div className="sm:col-span-2">
+          <label className="text-[10px] text-neutral-400 block mb-1">Title *</label>
+          <input
+            type="text"
+            required
+            value={assessmentTitle}
+            onChange={(e) => setAssessmentTitle(e.target.value)}
+            placeholder="e.g. Midterm 1, Quiz 2"
+            className="w-full rounded bg-neutral-900 border border-neutral-800 px-2 py-1 text-neutral-100"
+          />
+        </div>
+        <div>
+          <label className="text-[10px] text-neutral-400 block mb-1">Type *</label>
+          <select
+            value={assessmentType}
+            onChange={(e) => setAssessmentType(e.target.value as AssessmentType)}
+            className="w-full rounded bg-neutral-900 border border-neutral-800 px-2 py-1.5 text-neutral-100"
+          >
+            {ASSESSMENT_TYPES.map((t) => (
+              <option key={t.value} value={t.value}>
+                {t.label}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div>
+          <label className="text-[10px] text-neutral-400 block mb-1">Date *</label>
+          <input
+            type="date"
+            required
+            value={assessmentDate}
+            onChange={(e) => setAssessmentDate(e.target.value)}
+            className="w-full rounded bg-neutral-900 border border-neutral-800 px-2 py-1 text-neutral-100"
+          />
+        </div>
+        <div>
+          <label className="text-[10px] text-neutral-400 block mb-1">Target Score (Optional)</label>
+          <input
+            type="number"
+            value={assessmentTargetScore}
+            onChange={(e) => setAssessmentTargetScore(e.target.value)}
+            placeholder="e.g. 90"
+            className="w-full rounded bg-neutral-900 border border-neutral-800 px-2 py-1 text-neutral-100"
+          />
+        </div>
+        <div>
+          <label className="text-[10px] text-neutral-400 block mb-1">Notes</label>
+          <input
+            type="text"
+            value={assessmentNotes}
+            onChange={(e) => setAssessmentNotes(e.target.value)}
+            placeholder="Chapters 1-3, formula sheet allowed"
+            className="w-full rounded bg-neutral-900 border border-neutral-800 px-2 py-1 text-neutral-100"
+          />
+        </div>
+      </div>
+      <div className="flex justify-end gap-2 pt-1 border-t border-neutral-800/80">
+        <button type="button" onClick={onClose} className="px-2.5 py-1 text-neutral-400 hover:text-white">
+          Cancel
+        </button>
+        <button
+          type="submit"
+          disabled={submitting || !assessmentTitle.trim() || !assessmentDate}
+          className="rounded bg-neutral-100 px-3 py-1 font-semibold text-neutral-950 hover:bg-neutral-200 disabled:opacity-50"
+        >
+          {submitting ? "Saving..." : "Save Event"}
+        </button>
+      </div>
+    </form>
+  );
+}
+
+function AddDeadlineModal({
+  onClose,
+  onSubmit,
+}: {
+  onClose: () => void;
+  onSubmit: (input: {
+    title: string;
+    due_date: string;
+    category?: string;
+    notes?: string;
+  }) => Promise<void>;
+}) {
+  const [deadlineTitle, setDeadlineTitle] = useState("");
+  const [deadlineDueDate, setDeadlineDueDate] = useState(todayISO());
+  const [deadlineCategory, setDeadlineCategory] = useState("Assignment");
+  const [deadlineNotes, setDeadlineNotes] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!deadlineTitle.trim() || !deadlineDueDate) return;
+    setError(null);
+    setSubmitting(true);
+    try {
+      await onSubmit({
+        title: deadlineTitle.trim(),
+        due_date: deadlineDueDate,
+        category: deadlineCategory.trim() || undefined,
+        notes: deadlineNotes.trim() || undefined,
+      });
+      onClose();
+    } catch (err: any) {
+      setError(err?.message || "Failed to add deadline");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <form onSubmit={handleSubmit} className="rounded-lg border border-neutral-700 bg-neutral-950 p-3 space-y-3 text-xs font-mono">
+      <div className="flex items-center justify-between">
+        <span className="font-semibold text-neutral-200">Add Academic Deadline</span>
+        <button type="button" onClick={onClose} className="text-neutral-500 hover:text-white">
+          &times;
+        </button>
+      </div>
+      {error && (
+        <div className="rounded border border-rose-800/80 bg-rose-950/60 p-2 text-rose-300 text-[11px] font-mono">
+          {error}
+        </div>
+      )}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+        <div className="sm:col-span-2">
+          <label className="text-[10px] text-neutral-400 block mb-1">Title *</label>
+          <input
+            type="text"
+            required
+            value={deadlineTitle}
+            onChange={(e) => setDeadlineTitle(e.target.value)}
+            placeholder="e.g. Problem Set 3"
+            className="w-full rounded bg-neutral-900 border border-neutral-800 px-2 py-1 text-neutral-100"
+          />
+        </div>
+        <div>
+          <label className="text-[10px] text-neutral-400 block mb-1">Due Date *</label>
+          <input
+            type="date"
+            required
+            value={deadlineDueDate}
+            onChange={(e) => setDeadlineDueDate(e.target.value)}
+            className="w-full rounded bg-neutral-900 border border-neutral-800 px-2 py-1 text-neutral-100"
+          />
+        </div>
+        <div>
+          <label className="text-[10px] text-neutral-400 block mb-1">Category</label>
+          <input
+            type="text"
+            value={deadlineCategory}
+            onChange={(e) => setDeadlineCategory(e.target.value)}
+            placeholder="Assignment, Project, etc."
+            className="w-full rounded bg-neutral-900 border border-neutral-800 px-2 py-1 text-neutral-100"
+          />
+        </div>
+        <div className="sm:col-span-2">
+          <label className="text-[10px] text-neutral-400 block mb-1">Notes</label>
+          <input
+            type="text"
+            value={deadlineNotes}
+            onChange={(e) => setDeadlineNotes(e.target.value)}
+            placeholder="Submit via Gradescope"
+            className="w-full rounded bg-neutral-900 border border-neutral-800 px-2 py-1 text-neutral-100"
+          />
+        </div>
+      </div>
+      <div className="flex justify-end gap-2 pt-1 border-t border-neutral-800/80">
+        <button type="button" onClick={onClose} className="px-2.5 py-1 text-neutral-400 hover:text-white">
+          Cancel
+        </button>
+        <button
+          type="submit"
+          disabled={submitting || !deadlineTitle.trim() || !deadlineDueDate}
+          className="rounded bg-neutral-100 px-3 py-1 font-semibold text-neutral-950 hover:bg-neutral-200 disabled:opacity-50"
+        >
+          {submitting ? "Saving..." : "Save Deadline"}
+        </button>
+      </div>
+    </form>
+  );
+}
+
+function AddGoalModal({
+  onClose,
+  onSubmit,
+}: {
+  onClose: () => void;
+  onSubmit: (input: {
+    title: string;
+    priority: number;
+    due_date?: string;
+    description?: string;
+  }) => Promise<void>;
+}) {
+  const [goalTitle, setGoalTitle] = useState("");
+  const [goalPriority, setGoalPriority] = useState(3);
+  const [goalDueDate, setGoalDueDate] = useState("");
+  const [goalDescription, setGoalDescription] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!goalTitle.trim()) return;
+    setError(null);
+    setSubmitting(true);
+    try {
+      await onSubmit({
+        title: goalTitle.trim(),
+        priority: goalPriority,
+        due_date: goalDueDate || undefined,
+        description: goalDescription.trim() || undefined,
+      });
+      onClose();
+    } catch (err: any) {
+      setError(err?.message || "Failed to add goal");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <form onSubmit={handleSubmit} className="rounded-lg border border-neutral-700 bg-neutral-950 p-3 space-y-3 text-xs font-mono">
+      <div className="flex items-center justify-between">
+        <span className="font-semibold text-neutral-200">Add Course Goal</span>
+        <button type="button" onClick={onClose} className="text-neutral-500 hover:text-white">
+          &times;
+        </button>
+      </div>
+      {error && (
+        <div className="rounded border border-rose-800/80 bg-rose-950/60 p-2 text-rose-300 text-[11px] font-mono">
+          {error}
+        </div>
+      )}
+      <div className="space-y-2">
+        <div>
+          <label className="text-[10px] text-neutral-400 block mb-1">Goal Title *</label>
+          <input
+            type="text"
+            required
+            value={goalTitle}
+            onChange={(e) => setGoalTitle(e.target.value)}
+            placeholder="e.g. Master dynamic programming proofs"
+            className="w-full rounded bg-neutral-900 border border-neutral-800 px-2 py-1 text-neutral-100"
+          />
+        </div>
+        <div className="grid grid-cols-2 gap-2">
+          <div>
+            <label className="text-[10px] text-neutral-400 block mb-1">Priority</label>
+            <select
+              value={goalPriority}
+              onChange={(e) => setGoalPriority(parseInt(e.target.value, 10))}
+              className="w-full rounded bg-neutral-900 border border-neutral-800 px-2 py-1.5 text-neutral-100"
+            >
+              <option value={1}>P1 · High</option>
+              <option value={2}>P2 · Med</option>
+              <option value={3}>P3 · Normal</option>
+              <option value={4}>P4 · Low</option>
+            </select>
+          </div>
+          <div>
+            <label className="text-[10px] text-neutral-400 block mb-1">Target Due Date</label>
+            <input
+              type="date"
+              value={goalDueDate}
+              onChange={(e) => setGoalDueDate(e.target.value)}
+              className="w-full rounded bg-neutral-900 border border-neutral-800 px-2 py-1 text-neutral-100"
+            />
+          </div>
+        </div>
+        <div>
+          <label className="text-[10px] text-neutral-400 block mb-1">Description / Notes</label>
+          <input
+            type="text"
+            value={goalDescription}
+            onChange={(e) => setGoalDescription(e.target.value)}
+            placeholder="Key milestones or focus areas"
+            className="w-full rounded bg-neutral-900 border border-neutral-800 px-2 py-1 text-neutral-100"
+          />
+        </div>
+      </div>
+      <div className="flex justify-end gap-2 pt-1 border-t border-neutral-800/80">
+        <button type="button" onClick={onClose} className="px-2.5 py-1 text-neutral-400 hover:text-white">
+          Cancel
+        </button>
+        <button
+          type="submit"
+          disabled={submitting || !goalTitle.trim()}
+          className="rounded bg-neutral-100 px-3 py-1 font-semibold text-neutral-950 hover:bg-neutral-200 disabled:opacity-50"
+        >
+          {submitting ? "Saving..." : "Save Goal"}
+        </button>
+      </div>
+    </form>
+  );
+}
+
+function AddTaskModal({
+  onClose,
+  onSubmit,
+}: {
+  onClose: () => void;
+  onSubmit: (input: {
+    title: string;
+    priority: number;
+    deadline?: string;
+    planned_duration_min?: number;
+    notes?: string;
+    addAsGoal: boolean;
+  }) => Promise<void>;
+}) {
+  const [taskTitle, setTaskTitle] = useState("");
+  const [taskPriority, setTaskPriority] = useState(3);
+  const [taskDeadline, setTaskDeadline] = useState("");
+  const [taskDuration, setTaskDuration] = useState("");
+  const [taskNotes, setTaskNotes] = useState("");
+  const [taskAddAsGoal, setTaskAddAsGoal] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!taskTitle.trim()) return;
+    setError(null);
+    setSubmitting(true);
+    try {
+      await onSubmit({
+        title: taskTitle.trim(),
+        priority: taskPriority,
+        deadline: taskDeadline || undefined,
+        planned_duration_min: taskDuration ? parseInt(taskDuration, 10) : undefined,
+        notes: taskNotes.trim() || undefined,
+        addAsGoal: taskAddAsGoal,
+      });
+      onClose();
+    } catch (err: any) {
+      setError(err?.message || "Failed to add task");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <form onSubmit={handleSubmit} className="rounded-lg border border-neutral-700 bg-neutral-950 p-3 space-y-3 text-xs font-mono">
+      <div className="flex items-center justify-between">
+        <span className="font-semibold text-neutral-200">Add Course Task</span>
+        <button type="button" onClick={onClose} className="text-neutral-500 hover:text-white">
+          &times;
+        </button>
+      </div>
+      {error && (
+        <div className="rounded border border-rose-800/80 bg-rose-950/60 p-2 text-rose-300 text-[11px] font-mono">
+          {error}
+        </div>
+      )}
+      <div className="space-y-2">
+        <div>
+          <label className="text-[10px] text-neutral-400 block mb-1">Task Title *</label>
+          <input
+            type="text"
+            required
+            value={taskTitle}
+            onChange={(e) => setTaskTitle(e.target.value)}
+            placeholder="e.g. Read lecture slides 5"
+            className="w-full rounded bg-neutral-900 border border-neutral-800 px-2 py-1 text-neutral-100"
+          />
+        </div>
+        <div className="grid grid-cols-3 gap-2">
+          <div>
+            <label className="text-[10px] text-neutral-400 block mb-1">Priority</label>
+            <select
+              value={taskPriority}
+              onChange={(e) => setTaskPriority(parseInt(e.target.value, 10))}
+              className="w-full rounded bg-neutral-900 border border-neutral-800 px-2 py-1.5 text-neutral-100"
+            >
+              <option value={1}>P1 · High</option>
+              <option value={2}>P2 · Med</option>
+              <option value={3}>P3 · Normal</option>
+              <option value={4}>P4 · Low</option>
+            </select>
+          </div>
+          <div>
+            <label className="text-[10px] text-neutral-400 block mb-1">Duration (min)</label>
+            <input
+              type="number"
+              value={taskDuration}
+              onChange={(e) => setTaskDuration(e.target.value)}
+              placeholder="45"
+              className="w-full rounded bg-neutral-900 border border-neutral-800 px-2 py-1 text-neutral-100"
+            />
+          </div>
+          <div>
+            <label className="text-[10px] text-neutral-400 block mb-1">Deadline Date</label>
+            <input
+              type="date"
+              value={taskDeadline}
+              onChange={(e) => setTaskDeadline(e.target.value)}
+              className="w-full rounded bg-neutral-900 border border-neutral-800 px-2 py-1 text-neutral-100"
+            />
+          </div>
+        </div>
+        <div>
+          <label className="text-[10px] text-neutral-400 block mb-1">Notes</label>
+          <input
+            type="text"
+            value={taskNotes}
+            onChange={(e) => setTaskNotes(e.target.value)}
+            placeholder="Focus on section 2 exercises"
+            className="w-full rounded bg-neutral-900 border border-neutral-800 px-2 py-1 text-neutral-100"
+          />
+        </div>
+
+        {/* CRUCIAL: EXPLICIT TASK -> GOAL TOGGLE */}
+        <div className="rounded-lg border border-neutral-800 bg-neutral-900/60 p-2.5 flex items-start gap-2.5 mt-2">
+          <input
+            type="checkbox"
+            id="addAsGoalCheckbox"
+            checked={taskAddAsGoal}
+            onChange={(e) => setTaskAddAsGoal(e.target.checked)}
+            className="mt-0.5 h-4 w-4 rounded border-neutral-700 bg-neutral-950 text-amber-500 focus:ring-0 focus:ring-offset-0"
+          />
+          <label htmlFor="addAsGoalCheckbox" className="text-[11px] text-neutral-300 leading-tight cursor-pointer">
+            <span className="font-semibold text-neutral-100 block">Add this as a Goal</span>
+            <span className="text-[10px] text-neutral-400 block">
+              Also creates a canonical goal in the global goals system and links this task to it.
+            </span>
+          </label>
+        </div>
+      </div>
+      <div className="flex justify-end gap-2 pt-1 border-t border-neutral-800/80">
+        <button type="button" onClick={onClose} className="px-2.5 py-1 text-neutral-400 hover:text-white">
+          Cancel
+        </button>
+        <button
+          type="submit"
+          disabled={submitting || !taskTitle.trim()}
+          className="rounded bg-neutral-100 px-3 py-1 font-semibold text-neutral-950 hover:bg-neutral-200 disabled:opacity-50"
+        >
+          {submitting ? "Saving..." : "Save Task"}
+        </button>
+      </div>
+    </form>
+  );
+}
+
+// --- MAIN COURSE DETAIL COMPONENT ---
+
 export default function CourseDetailClient({ details }: { details: CourseDetailData }) {
-  const router = useRouter();
   const { course, attendance, pastScores } = details;
 
   const [pending, startTransition] = useTransition();
@@ -61,56 +825,27 @@ export default function CourseDetailClient({ details }: { details: CourseDetailD
   const [goals, setGoals] = useState<Goal[]>(details.linkedGoals);
   const [tasks, setTasks] = useState<Task[]>(details.linkedTasks);
 
+  // Sync data lists when details prop updates from server revalidation
+  useEffect(() => {
+    setSlots(details.slots);
+    setAssessments(details.assessments);
+    setDeadlines(details.deadlines);
+    setGoals(details.linkedGoals);
+    setTasks(details.linkedTasks);
+  }, [details.slots, details.assessments, details.deadlines, details.linkedGoals, details.linkedTasks]);
+
   // Notes editing state
   const [syllabusNotes, setSyllabusNotes] = useState(course.syllabus_notes ?? "");
   const [nextExamNotes, setNextExamNotes] = useState(course.next_assessment_notes ?? "");
   const [notesSaved, setNotesSaved] = useState(false);
 
-  // Modal 1: Add slot state
+  // Modal open states
   const [showAddSlot, setShowAddSlot] = useState(false);
-  const [slotDay, setSlotDay] = useState(1);
-  const [slotStart, setSlotStart] = useState("09:00");
-  const [slotEnd, setSlotEnd] = useState("10:00");
-  const [slotType, setSlotType] = useState<SlotType>("lecture");
-  const [slotLocation, setSlotLocation] = useState(course.location ?? "");
-
-  // Modal 2: Add extra class state
   const [showAddExtra, setShowAddExtra] = useState(false);
-  const [extraDate, setExtraDate] = useState("");
-  const [extraStart, setExtraStart] = useState("14:00");
-  const [extraEnd, setExtraEnd] = useState("15:00");
-  const [extraNotes, setExtraNotes] = useState("");
-
-  // Modal 3: Add Assessment state
   const [showAddAssessment, setShowAddAssessment] = useState(false);
-  const [assessmentTitle, setAssessmentTitle] = useState("");
-  const [assessmentType, setAssessmentType] = useState<AssessmentType>("quiz");
-  const [assessmentDate, setAssessmentDate] = useState("");
-  const [assessmentTargetScore, setAssessmentTargetScore] = useState("");
-  const [assessmentNotes, setAssessmentNotes] = useState("");
-
-  // Modal 4: Add Deadline state
   const [showAddDeadline, setShowAddDeadline] = useState(false);
-  const [deadlineTitle, setDeadlineTitle] = useState("");
-  const [deadlineDueDate, setDeadlineDueDate] = useState("");
-  const [deadlineCategory, setDeadlineCategory] = useState("Assignment");
-  const [deadlineNotes, setDeadlineNotes] = useState("");
-
-  // Modal 5: Add Goal state
   const [showAddGoal, setShowAddGoal] = useState(false);
-  const [goalTitle, setGoalTitle] = useState("");
-  const [goalPriority, setGoalPriority] = useState(3);
-  const [goalDueDate, setGoalDueDate] = useState("");
-  const [goalDescription, setGoalDescription] = useState("");
-
-  // Modal 6: Add Task state (with explicit Add as Goal option)
   const [showAddTask, setShowAddTask] = useState(false);
-  const [taskTitle, setTaskTitle] = useState("");
-  const [taskPriority, setTaskPriority] = useState(3);
-  const [taskDeadline, setTaskDeadline] = useState("");
-  const [taskDuration, setTaskDuration] = useState("");
-  const [taskNotes, setTaskNotes] = useState("");
-  const [taskAddAsGoal, setTaskAddAsGoal] = useState(false);
 
   // 1. NOTES
   const handleSaveNotes = () => {
@@ -122,7 +857,6 @@ export default function CourseDetailClient({ details }: { details: CourseDetailD
         });
         setNotesSaved(true);
         setTimeout(() => setNotesSaved(false), 2500);
-        router.refresh();
       } catch (e) {
         console.error("Failed to save notes", e);
       }
@@ -138,7 +872,6 @@ export default function CourseDetailClient({ details }: { details: CourseDetailD
         } else {
           await activateCourse(course.id);
         }
-        router.refresh();
       } catch (e) {
         console.error("Failed to toggle course active status", e);
       }
@@ -146,43 +879,40 @@ export default function CourseDetailClient({ details }: { details: CourseDetailD
   };
 
   // 3. RECURRING SLOTS & EXTRA CLASSES
-  const handleAddSlot = (e: React.FormEvent) => {
-    e.preventDefault();
-    startTransition(async () => {
-      try {
-        const slotId = await addTimetableSlot({
-          course_id: course.id,
-          day_of_week: slotDay,
-          start_time: slotStart,
-          end_time: slotEnd,
-          slot_type: slotType,
-          location: slotLocation.trim() || undefined,
-        });
-        setSlots((prev) => [
-          ...prev,
-          {
-            id: slotId,
-            user_id: course.user_id,
-            course_id: course.id,
-            day_of_week: slotDay,
-            start_time: slotStart.length === 5 ? `${slotStart}:00` : slotStart,
-            end_time: slotEnd.length === 5 ? `${slotEnd}:00` : slotEnd,
-            slot_type: slotType,
-            location: slotLocation.trim() || null,
-            name: course.code,
-            subject: course.name,
-            instructor: course.instructor ?? null,
-            attendance_target: course.attendance_target ?? 75,
-            active: true,
-            created_at: new Date().toISOString(),
-          } as ClassDef,
-        ]);
-        setShowAddSlot(false);
-        router.refresh();
-      } catch (err) {
-        console.error("Failed to add slot", err);
-      }
+  const handleAddSlot = async (input: {
+    day_of_week: number;
+    start_time: string;
+    end_time: string;
+    slot_type: SlotType;
+    location?: string;
+  }) => {
+    const slotId = await addTimetableSlot({
+      course_id: course.id,
+      day_of_week: input.day_of_week,
+      start_time: input.start_time,
+      end_time: input.end_time,
+      slot_type: input.slot_type,
+      location: input.location,
     });
+    setSlots((prev) => [
+      ...prev,
+      {
+        id: slotId,
+        user_id: course.user_id,
+        course_id: course.id,
+        day_of_week: input.day_of_week,
+        start_time: input.start_time.length === 5 ? `${input.start_time}:00` : input.start_time,
+        end_time: input.end_time.length === 5 ? `${input.end_time}:00` : input.end_time,
+        slot_type: input.slot_type,
+        location: input.location ?? null,
+        name: course.code,
+        subject: course.name,
+        instructor: course.instructor ?? null,
+        attendance_target: course.attendance_target ?? 75,
+        active: true,
+        created_at: new Date().toISOString(),
+      } as ClassDef,
+    ]);
   };
 
   const handleDeleteSlot = (slotId: string) => {
@@ -192,7 +922,6 @@ export default function CourseDetailClient({ details }: { details: CourseDetailD
     startTransition(async () => {
       try {
         await deleteTimetableSlot(slotId);
-        router.refresh();
       } catch (e) {
         console.error("Failed to delete slot", e);
         setSlots(prevSlots);
@@ -200,74 +929,59 @@ export default function CourseDetailClient({ details }: { details: CourseDetailD
     });
   };
 
-  const handleAddExtraClass = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!extraDate) return;
-    startTransition(async () => {
-      try {
-        await createExtraClass({
-          course_id: course.id,
-          date: extraDate,
-          start_time: extraStart,
-          end_time: extraEnd,
-          notes: extraNotes.trim() || undefined,
-        });
-        setShowAddExtra(false);
-        setExtraDate("");
-        setExtraNotes("");
-        router.refresh();
-      } catch (err) {
-        console.error("Failed to add extra class", err);
-      }
+  const handleAddExtraClass = async (input: {
+    date: string;
+    start_time: string;
+    end_time: string;
+    notes?: string;
+  }) => {
+    await createExtraClass({
+      course_id: course.id,
+      date: input.date,
+      start_time: input.start_time,
+      end_time: input.end_time,
+      notes: input.notes,
     });
   };
 
   // 4. ASSESSMENTS
-  const handleAddAssessment = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!assessmentTitle.trim() || !assessmentDate) return;
-    startTransition(async () => {
-      try {
-        const id = await createAssessment({
-          course_id: course.id,
-          title: assessmentTitle.trim(),
-          type: assessmentType,
-          date: assessmentDate,
-          target_score: assessmentTargetScore ? parseFloat(assessmentTargetScore) : undefined,
-          notes: assessmentNotes.trim() || undefined,
-        });
-
-        const newAssessment: Assessment = {
-          id,
-          user_id: course.user_id,
-          course_id: course.id,
-          class_id: null,
-          title: assessmentTitle.trim(),
-          type: assessmentType,
-          date: assessmentDate,
-          target_score: assessmentTargetScore ? parseFloat(assessmentTargetScore) : null,
-          notes: assessmentNotes.trim() || null,
-          prep_hours: null,
-          score: null,
-          max_score: null,
-          status: "upcoming",
-          practice_scores: [],
-          created_at: new Date().toISOString(),
-        };
-
-        setAssessments((prev) =>
-          [...prev, newAssessment].sort((a, b) => a.date.localeCompare(b.date))
-        );
-        setShowAddAssessment(false);
-        setAssessmentTitle("");
-        setAssessmentDate("");
-        setAssessmentTargetScore("");
-        setAssessmentNotes("");
-        router.refresh();
-      } catch (err) {
-        console.error("Failed to add assessment", err);
-      }
+  const handleAddAssessment = async (input: {
+    title: string;
+    type: AssessmentType;
+    date: string;
+    target_score?: number;
+    notes?: string;
+  }) => {
+    const id = await createAssessment({
+      course_id: course.id,
+      title: input.title,
+      type: input.type,
+      date: input.date,
+      target_score: input.target_score,
+      notes: input.notes,
     });
+
+    const newAssessment: Assessment = {
+      id,
+      user_id: course.user_id,
+      course_id: course.id,
+      class_id: null,
+      title: input.title,
+      type: input.type,
+      date: input.date,
+      target_score: input.target_score ?? null,
+      notes: input.notes ?? null,
+      prep_hours: null,
+      score: null,
+      max_score: null,
+      status: "upcoming",
+      practice_scores: [],
+      created_at: new Date().toISOString(),
+    };
+
+    setAssessments((prev) =>
+      [...prev, newAssessment].sort((a, b) => a.date.localeCompare(b.date))
+    );
   };
 
   const handleDeleteAssessment = (id: string, title: string) => {
@@ -277,7 +991,6 @@ export default function CourseDetailClient({ details }: { details: CourseDetailD
     startTransition(async () => {
       try {
         await deleteAssessment(id);
-        router.refresh();
       } catch (err) {
         console.error("Failed to delete assessment", err);
         setAssessments(prevList);
@@ -286,44 +999,36 @@ export default function CourseDetailClient({ details }: { details: CourseDetailD
   };
 
   // 5. DEADLINES
-  const handleAddDeadline = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!deadlineTitle.trim() || !deadlineDueDate) return;
-    startTransition(async () => {
-      try {
-        const id = await createDeadline({
-          course_id: course.id,
-          title: deadlineTitle.trim(),
-          due_date: deadlineDueDate,
-          category: deadlineCategory.trim() || undefined,
-          notes: deadlineNotes.trim() || undefined,
-        });
-
-        const newDeadline: Deadline = {
-          id,
-          user_id: course.user_id,
-          course_id: course.id,
-          class_id: null,
-          title: deadlineTitle.trim(),
-          due_date: deadlineDueDate,
-          category: deadlineCategory.trim() || null,
-          notes: deadlineNotes.trim() || null,
-          status: "pending",
-          created_at: new Date().toISOString(),
-        };
-
-        setDeadlines((prev) =>
-          [...prev, newDeadline].sort((a, b) => a.due_date.localeCompare(b.due_date))
-        );
-        setShowAddDeadline(false);
-        setDeadlineTitle("");
-        setDeadlineDueDate("");
-        setDeadlineNotes("");
-        router.refresh();
-      } catch (err) {
-        console.error("Failed to add deadline", err);
-      }
+  const handleAddDeadline = async (input: {
+    title: string;
+    due_date: string;
+    category?: string;
+    notes?: string;
+  }) => {
+    const id = await createDeadline({
+      course_id: course.id,
+      title: input.title,
+      due_date: input.due_date,
+      category: input.category,
+      notes: input.notes,
     });
+
+    const newDeadline: Deadline = {
+      id,
+      user_id: course.user_id,
+      course_id: course.id,
+      class_id: null,
+      title: input.title,
+      due_date: input.due_date,
+      category: input.category ?? null,
+      notes: input.notes ?? null,
+      status: "pending",
+      created_at: new Date().toISOString(),
+    };
+
+    setDeadlines((prev) =>
+      [...prev, newDeadline].sort((a, b) => a.due_date.localeCompare(b.due_date))
+    );
   };
 
   const handleToggleDeadlineStatus = (id: string, current: string) => {
@@ -334,7 +1039,6 @@ export default function CourseDetailClient({ details }: { details: CourseDetailD
     startTransition(async () => {
       try {
         await updateDeadlineStatus(id, nextStatus);
-        router.refresh();
       } catch (err) {
         console.error("Failed to toggle deadline status", err);
       }
@@ -348,7 +1052,6 @@ export default function CourseDetailClient({ details }: { details: CourseDetailD
     startTransition(async () => {
       try {
         await deleteDeadline(id);
-        router.refresh();
       } catch (err) {
         console.error("Failed to delete deadline", err);
         setDeadlines(prevList);
@@ -357,52 +1060,43 @@ export default function CourseDetailClient({ details }: { details: CourseDetailD
   };
 
   // 6. COURSE GOALS
-  const handleAddGoal = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!goalTitle.trim()) return;
-    startTransition(async () => {
-      try {
-        const id = await createGoal({
-          course_id: course.id,
-          title: goalTitle.trim(),
-          priority: goalPriority,
-          due_date: goalDueDate || undefined,
-          description: goalDescription.trim() || undefined,
-          level: "week",
-        });
-
-        const newGoal: Goal = {
-          id,
-          user_id: course.user_id,
-          parent_id: null,
-          course_id: course.id,
-          level: "week",
-          title: goalTitle.trim(),
-          description: goalDescription.trim() || null,
-          start_date: null,
-          due_date: goalDueDate || null,
-          priority: goalPriority,
-          is_top3: false,
-          status: "not_started",
-          progress: 0,
-          target_value: null,
-          current_value: null,
-          manual_progress: null,
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-        };
-
-        setGoals((prev) => [newGoal, ...prev]);
-        setShowAddGoal(false);
-        setGoalTitle("");
-        setGoalDueDate("");
-        setGoalDescription("");
-        setGoalPriority(3);
-        router.refresh();
-      } catch (err) {
-        console.error("Failed to add goal", err);
-      }
+  const handleAddGoal = async (input: {
+    title: string;
+    priority: number;
+    due_date?: string;
+    description?: string;
+  }) => {
+    const id = await createGoal({
+      course_id: course.id,
+      title: input.title,
+      priority: input.priority,
+      due_date: input.due_date,
+      description: input.description,
+      level: "week",
     });
+
+    const newGoal: Goal = {
+      id,
+      user_id: course.user_id,
+      parent_id: null,
+      course_id: course.id,
+      level: "week",
+      title: input.title,
+      description: input.description ?? null,
+      start_date: null,
+      due_date: input.due_date ?? null,
+      priority: input.priority,
+      is_top3: false,
+      status: "not_started",
+      progress: 0,
+      target_value: null,
+      current_value: null,
+      manual_progress: null,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+
+    setGoals((prev) => [newGoal, ...prev]);
   };
 
   const handleUpdateGoalStatus = (goalId: string, nextStatus: GoalStatus) => {
@@ -411,8 +1105,7 @@ export default function CourseDetailClient({ details }: { details: CourseDetailD
     );
     startTransition(async () => {
       try {
-        await updateGoal(goalId, { status: nextStatus });
-        router.refresh();
+        await updateGoal(goalId, { status: nextStatus, course_id: course.id });
       } catch (err) {
         console.error("Failed to update goal status", err);
       }
@@ -437,8 +1130,8 @@ export default function CourseDetailClient({ details }: { details: CourseDetailD
         await updateGoal(goalId, {
           manual_progress: progressValue,
           status: progressValue === 100 ? "completed" : undefined,
+          course_id: course.id,
         });
-        router.refresh();
       } catch (err) {
         console.error("Failed to update goal progress", err);
       }
@@ -452,7 +1145,6 @@ export default function CourseDetailClient({ details }: { details: CourseDetailD
     startTransition(async () => {
       try {
         await deleteGoal(goalId);
-        router.refresh();
       } catch (err) {
         console.error("Failed to delete goal", err);
         setGoals(prevList);
@@ -461,71 +1153,61 @@ export default function CourseDetailClient({ details }: { details: CourseDetailD
   };
 
   // 7. COURSE TASKS (WITH EXPLICIT TASK -> GOAL OPTION)
-  const handleAddTask = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!taskTitle.trim()) return;
+  const handleAddTask = async (input: {
+    title: string;
+    priority: number;
+    deadline?: string;
+    planned_duration_min?: number;
+    notes?: string;
+    addAsGoal: boolean;
+  }) => {
+    let createdGoalId: string | undefined = undefined;
 
-    startTransition(async () => {
-      try {
-        let createdGoalId: string | undefined = undefined;
+    // If user checked "Add this as a Goal", create corresponding goal record first
+    if (input.addAsGoal) {
+      createdGoalId = await createGoal({
+        course_id: course.id,
+        title: input.title,
+        priority: input.priority,
+        due_date: input.deadline,
+        level: "week",
+      });
 
-        // If user checked "Add this as a Goal", create corresponding goal record first
-        if (taskAddAsGoal) {
-          createdGoalId = await createGoal({
-            course_id: course.id,
-            title: taskTitle.trim(),
-            priority: taskPriority,
-            due_date: taskDeadline || undefined,
-            level: "week",
-          });
+      const newGoal: Goal = {
+        id: createdGoalId,
+        user_id: course.user_id,
+        parent_id: null,
+        course_id: course.id,
+        level: "week",
+        title: input.title,
+        description: null,
+        start_date: null,
+        due_date: input.deadline ?? null,
+        priority: input.priority,
+        is_top3: false,
+        status: "not_started",
+        progress: 0,
+        target_value: null,
+        current_value: null,
+        manual_progress: null,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      };
 
-          const newGoal: Goal = {
-            id: createdGoalId,
-            user_id: course.user_id,
-            parent_id: null,
-            course_id: course.id,
-            level: "week",
-            title: taskTitle.trim(),
-            description: null,
-            start_date: null,
-            due_date: taskDeadline || null,
-            priority: taskPriority,
-            is_top3: false,
-            status: "not_started",
-            progress: 0,
-            target_value: null,
-            current_value: null,
-            manual_progress: null,
-            created_at: new Date().toISOString(),
-            updated_at: new Date().toISOString(),
-          };
+      setGoals((prev) => [newGoal, ...prev]);
+    }
 
-          setGoals((prev) => [newGoal, ...prev]);
-        }
-
-        const createdTask = await createTask({
-          course_id: course.id,
-          title: taskTitle.trim(),
-          priority: taskPriority,
-          deadline: taskDeadline || undefined,
-          planned_duration_min: taskDuration ? parseInt(taskDuration, 10) : undefined,
-          notes: taskNotes.trim() || undefined,
-          goal_id: createdGoalId,
-        });
-
-        setTasks((prev) => [createdTask as unknown as Task, ...prev]);
-        setShowAddTask(false);
-        setTaskTitle("");
-        setTaskDeadline("");
-        setTaskDuration("");
-        setTaskNotes("");
-        setTaskAddAsGoal(false);
-        setTaskPriority(3);
-        router.refresh();
-      } catch (err) {
-        console.error("Failed to add task", err);
-      }
+    const createdTask = await createTask({
+      course_id: course.id,
+      title: input.title,
+      priority: input.priority,
+      deadline: input.deadline,
+      planned_duration_min: input.planned_duration_min,
+      notes: input.notes,
+      goal_id: createdGoalId,
     });
+
+    setTasks((prev) => [createdTask as unknown as Task, ...prev]);
   };
 
   const handleToggleTask = (taskId: string, currentStatus: string) => {
@@ -536,7 +1218,6 @@ export default function CourseDetailClient({ details }: { details: CourseDetailD
     startTransition(async () => {
       try {
         await updateTaskStatus(taskId, nextStatus);
-        router.refresh();
       } catch (err) {
         console.error("Failed to toggle task", err);
       }
@@ -550,7 +1231,6 @@ export default function CourseDetailClient({ details }: { details: CourseDetailD
     startTransition(async () => {
       try {
         await deleteTask(taskId);
-        router.refresh();
       } catch (err) {
         console.error("Failed to delete task", err);
         setTasks(prevList);
@@ -676,174 +1356,20 @@ export default function CourseDetailClient({ details }: { details: CourseDetailD
           </div>
         </div>
 
-        {/* Add Slot Form Modal */}
         {showAddSlot && (
-          <form onSubmit={handleAddSlot} className="rounded-lg border border-neutral-700 bg-neutral-950 p-3 space-y-3 text-xs">
-            <div className="flex items-center justify-between">
-              <span className="font-mono font-semibold text-neutral-200">Add Recurring Slot</span>
-              <button
-                type="button"
-                onClick={() => setShowAddSlot(false)}
-                className="text-neutral-500 hover:text-white"
-              >
-                &times;
-              </button>
-            </div>
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-              <div>
-                <label className="font-mono text-[10px] text-neutral-400 block mb-1">Day</label>
-                <select
-                  value={slotDay}
-                  onChange={(e) => setSlotDay(parseInt(e.target.value, 10))}
-                  className="w-full rounded bg-neutral-900 border border-neutral-800 px-2 py-1.5 text-neutral-100"
-                >
-                  <option value={1}>Monday</option>
-                  <option value={2}>Tuesday</option>
-                  <option value={3}>Wednesday</option>
-                  <option value={4}>Thursday</option>
-                  <option value={5}>Friday</option>
-                </select>
-              </div>
-
-              <div>
-                <label className="font-mono text-[10px] text-neutral-400 block mb-1">Type</label>
-                <select
-                  value={slotType}
-                  onChange={(e) => setSlotType(e.target.value as SlotType)}
-                  className="w-full rounded bg-neutral-900 border border-neutral-800 px-2 py-1.5 text-neutral-100"
-                >
-                  <option value="lecture">Lecture</option>
-                  <option value="lab">Lab</option>
-                  <option value="tutorial">Tutorial</option>
-                  <option value="seminar">Seminar</option>
-                  <option value="other">Other</option>
-                </select>
-              </div>
-
-              <div>
-                <label className="font-mono text-[10px] text-neutral-400 block mb-1">Start Time</label>
-                <input
-                  type="time"
-                  required
-                  value={slotStart}
-                  onChange={(e) => setSlotStart(e.target.value)}
-                  className="w-full rounded bg-neutral-900 border border-neutral-800 px-2 py-1 text-neutral-100"
-                />
-              </div>
-
-              <div>
-                <label className="font-mono text-[10px] text-neutral-400 block mb-1">End Time</label>
-                <input
-                  type="time"
-                  required
-                  value={slotEnd}
-                  onChange={(e) => setSlotEnd(e.target.value)}
-                  className="w-full rounded bg-neutral-900 border border-neutral-800 px-2 py-1 text-neutral-100"
-                />
-              </div>
-
-              <div className="col-span-2 sm:col-span-4">
-                <label className="font-mono text-[10px] text-neutral-400 block mb-1">Room / Location</label>
-                <input
-                  type="text"
-                  value={slotLocation}
-                  onChange={(e) => setSlotLocation(e.target.value)}
-                  className="w-full rounded bg-neutral-900 border border-neutral-800 px-2 py-1 text-neutral-100"
-                />
-              </div>
-            </div>
-
-            <div className="flex justify-end gap-2 pt-1 border-t border-neutral-800/80">
-              <button
-                type="button"
-                onClick={() => setShowAddSlot(false)}
-                className="px-2.5 py-1 font-mono text-neutral-400 hover:text-white"
-              >
-                Cancel
-              </button>
-              <button
-                type="submit"
-                disabled={pending}
-                className="rounded bg-neutral-100 px-3 py-1 font-mono font-semibold text-neutral-950 hover:bg-neutral-200"
-              >
-                Save Slot
-              </button>
-            </div>
-          </form>
+          <AddSlotModal
+            defaultLocation={course.location ?? ""}
+            onClose={() => setShowAddSlot(false)}
+            onSubmit={handleAddSlot}
+          />
         )}
 
         {/* Add Extra Class Form Modal */}
         {showAddExtra && (
-          <form onSubmit={handleAddExtraClass} className="rounded-lg border border-amber-800/80 bg-neutral-950 p-3 space-y-3 text-xs">
-            <div className="flex items-center justify-between">
-              <span className="font-mono font-medium text-amber-300">Schedule One-Off Extra Class</span>
-              <button
-                type="button"
-                onClick={() => setShowAddExtra(false)}
-                className="text-neutral-500 hover:text-white"
-              >
-                &times;
-              </button>
-            </div>
-            <div className="grid grid-cols-1 sm:grid-cols-4 gap-2">
-              <div>
-                <label className="font-mono text-[10px] text-neutral-400 block mb-1">Date *</label>
-                <input
-                  type="date"
-                  required
-                  value={extraDate}
-                  onChange={(e) => setExtraDate(e.target.value)}
-                  className="w-full rounded bg-neutral-900 border border-neutral-800 px-2 py-1 text-neutral-100"
-                />
-              </div>
-              <div>
-                <label className="font-mono text-[10px] text-neutral-400 block mb-1">Start Time *</label>
-                <input
-                  type="time"
-                  required
-                  value={extraStart}
-                  onChange={(e) => setExtraStart(e.target.value)}
-                  className="w-full rounded bg-neutral-900 border border-neutral-800 px-2 py-1 text-neutral-100"
-                />
-              </div>
-              <div>
-                <label className="font-mono text-[10px] text-neutral-400 block mb-1">End Time *</label>
-                <input
-                  type="time"
-                  required
-                  value={extraEnd}
-                  onChange={(e) => setExtraEnd(e.target.value)}
-                  className="w-full rounded bg-neutral-900 border border-neutral-800 px-2 py-1 text-neutral-100"
-                />
-              </div>
-              <div>
-                <label className="font-mono text-[10px] text-neutral-400 block mb-1">Notes</label>
-                <input
-                  type="text"
-                  value={extraNotes}
-                  onChange={(e) => setExtraNotes(e.target.value)}
-                  className="w-full rounded bg-neutral-900 border border-neutral-800 px-2 py-1 text-neutral-100"
-                />
-              </div>
-            </div>
-
-            <div className="flex justify-end gap-2 pt-1 border-t border-neutral-800/80">
-              <button
-                type="button"
-                onClick={() => setShowAddExtra(false)}
-                className="px-2.5 py-1 font-mono text-neutral-400 hover:text-white"
-              >
-                Cancel
-              </button>
-              <button
-                type="submit"
-                disabled={pending || !extraDate}
-                className="rounded bg-amber-400 px-3 py-1 font-mono font-semibold text-neutral-950 hover:bg-amber-300"
-              >
-                Save Extra Class
-              </button>
-            </div>
-          </form>
+          <AddExtraClassModal
+            onClose={() => setShowAddExtra(false)}
+            onSubmit={handleAddExtraClass}
+          />
         )}
 
         {/* Timetable slots list */}
@@ -906,162 +1432,18 @@ export default function CourseDetailClient({ details }: { details: CourseDetailD
 
         {/* Add Assessment Form Modal */}
         {showAddAssessment && (
-          <form onSubmit={handleAddAssessment} className="rounded-lg border border-neutral-700 bg-neutral-950 p-3 space-y-3 text-xs font-mono">
-            <div className="flex items-center justify-between">
-              <span className="font-semibold text-neutral-200">Add Academic Event / Assessment</span>
-              <button
-                type="button"
-                onClick={() => setShowAddAssessment(false)}
-                className="text-neutral-500 hover:text-white"
-              >
-                &times;
-              </button>
-            </div>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-              <div className="sm:col-span-2">
-                <label className="text-[10px] text-neutral-400 block mb-1">Title *</label>
-                <input
-                  type="text"
-                  required
-                  value={assessmentTitle}
-                  onChange={(e) => setAssessmentTitle(e.target.value)}
-                  className="w-full rounded bg-neutral-900 border border-neutral-800 px-2 py-1 text-neutral-100"
-                />
-              </div>
-              <div>
-                <label className="text-[10px] text-neutral-400 block mb-1">Type *</label>
-                <select
-                  value={assessmentType}
-                  onChange={(e) => setAssessmentType(e.target.value as AssessmentType)}
-                  className="w-full rounded bg-neutral-900 border border-neutral-800 px-2 py-1.5 text-neutral-100"
-                >
-                  {ASSESSMENT_TYPES.map((t) => (
-                    <option key={t.value} value={t.value}>
-                      {t.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label className="text-[10px] text-neutral-400 block mb-1">Date *</label>
-                <input
-                  type="date"
-                  required
-                  value={assessmentDate}
-                  onChange={(e) => setAssessmentDate(e.target.value)}
-                  className="w-full rounded bg-neutral-900 border border-neutral-800 px-2 py-1 text-neutral-100"
-                />
-              </div>
-              <div>
-                <label className="text-[10px] text-neutral-400 block mb-1">Target Score (Optional)</label>
-                <input
-                  type="number"
-                  value={assessmentTargetScore}
-                  onChange={(e) => setAssessmentTargetScore(e.target.value)}
-                  className="w-full rounded bg-neutral-900 border border-neutral-800 px-2 py-1 text-neutral-100"
-                />
-              </div>
-              <div>
-                <label className="text-[10px] text-neutral-400 block mb-1">Notes</label>
-                <input
-                  type="text"
-                  value={assessmentNotes}
-                  onChange={(e) => setAssessmentNotes(e.target.value)}
-                  className="w-full rounded bg-neutral-900 border border-neutral-800 px-2 py-1 text-neutral-100"
-                />
-              </div>
-            </div>
-
-            <div className="flex justify-end gap-2 pt-1 border-t border-neutral-800/80">
-              <button
-                type="button"
-                onClick={() => setShowAddAssessment(false)}
-                className="px-2.5 py-1 text-neutral-400 hover:text-white"
-              >
-                Cancel
-              </button>
-              <button
-                type="submit"
-                disabled={pending || !assessmentTitle.trim() || !assessmentDate}
-                className="rounded bg-neutral-100 px-3 py-1 font-semibold text-neutral-950 hover:bg-neutral-200"
-              >
-                Save Event
-              </button>
-            </div>
-          </form>
+          <AddAssessmentModal
+            onClose={() => setShowAddAssessment(false)}
+            onSubmit={handleAddAssessment}
+          />
         )}
 
         {/* Add Deadline Form Modal */}
         {showAddDeadline && (
-          <form onSubmit={handleAddDeadline} className="rounded-lg border border-neutral-700 bg-neutral-950 p-3 space-y-3 text-xs font-mono">
-            <div className="flex items-center justify-between">
-              <span className="font-semibold text-neutral-200">Add Academic Deadline</span>
-              <button
-                type="button"
-                onClick={() => setShowAddDeadline(false)}
-                className="text-neutral-500 hover:text-white"
-              >
-                &times;
-              </button>
-            </div>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-              <div className="sm:col-span-2">
-                <label className="text-[10px] text-neutral-400 block mb-1">Title *</label>
-                <input
-                  type="text"
-                  required
-                  value={deadlineTitle}
-                  onChange={(e) => setDeadlineTitle(e.target.value)}
-                  className="w-full rounded bg-neutral-900 border border-neutral-800 px-2 py-1 text-neutral-100"
-                />
-              </div>
-              <div>
-                <label className="text-[10px] text-neutral-400 block mb-1">Due Date *</label>
-                <input
-                  type="date"
-                  required
-                  value={deadlineDueDate}
-                  onChange={(e) => setDeadlineDueDate(e.target.value)}
-                  className="w-full rounded bg-neutral-900 border border-neutral-800 px-2 py-1 text-neutral-100"
-                />
-              </div>
-              <div>
-                <label className="text-[10px] text-neutral-400 block mb-1">Category</label>
-                <input
-                  type="text"
-                  value={deadlineCategory}
-                  onChange={(e) => setDeadlineCategory(e.target.value)}
-                  className="w-full rounded bg-neutral-900 border border-neutral-800 px-2 py-1 text-neutral-100"
-                />
-              </div>
-              <div className="sm:col-span-2">
-                <label className="text-[10px] text-neutral-400 block mb-1">Notes</label>
-                <input
-                  type="text"
-                  value={deadlineNotes}
-                  onChange={(e) => setDeadlineNotes(e.target.value)}
-                  className="w-full rounded bg-neutral-900 border border-neutral-800 px-2 py-1 text-neutral-100"
-                />
-              </div>
-            </div>
-
-            <div className="flex justify-end gap-2 pt-1 border-t border-neutral-800/80">
-              <button
-                type="button"
-                onClick={() => setShowAddDeadline(false)}
-                className="px-2.5 py-1 text-neutral-400 hover:text-white"
-              >
-                Cancel
-              </button>
-              <button
-                type="submit"
-                disabled={pending || !deadlineTitle.trim() || !deadlineDueDate}
-                className="rounded bg-neutral-100 px-3 py-1 font-semibold text-neutral-950 hover:bg-neutral-200"
-              >
-                Save Deadline
-              </button>
-            </div>
-          </form>
+          <AddDeadlineModal
+            onClose={() => setShowAddDeadline(false)}
+            onSubmit={handleAddDeadline}
+          />
         )}
 
         {assessments.length === 0 && deadlines.length === 0 ? (
@@ -1184,82 +1566,11 @@ export default function CourseDetailClient({ details }: { details: CourseDetailD
             </button>
           </div>
 
-          {/* Add Goal Modal */}
           {showAddGoal && (
-            <form onSubmit={handleAddGoal} className="rounded-lg border border-neutral-700 bg-neutral-950 p-3 space-y-3 text-xs font-mono">
-              <div className="flex items-center justify-between">
-                <span className="font-semibold text-neutral-200">Add Course Goal</span>
-                <button
-                  type="button"
-                  onClick={() => setShowAddGoal(false)}
-                  className="text-neutral-500 hover:text-white"
-                >
-                  &times;
-                </button>
-              </div>
-              <div className="space-y-2">
-                <div>
-                  <label className="text-[10px] text-neutral-400 block mb-1">Goal Title *</label>
-                  <input
-                    type="text"
-                    required
-                    value={goalTitle}
-                    onChange={(e) => setGoalTitle(e.target.value)}
-                    className="w-full rounded bg-neutral-900 border border-neutral-800 px-2 py-1 text-neutral-100"
-                  />
-                </div>
-                <div className="grid grid-cols-2 gap-2">
-                  <div>
-                    <label className="text-[10px] text-neutral-400 block mb-1">Priority</label>
-                    <select
-                      value={goalPriority}
-                      onChange={(e) => setGoalPriority(parseInt(e.target.value, 10))}
-                      className="w-full rounded bg-neutral-900 border border-neutral-800 px-2 py-1.5 text-neutral-100"
-                    >
-                      <option value={1}>P1 · High</option>
-                      <option value={2}>P2 · Med</option>
-                      <option value={3}>P3 · Normal</option>
-                      <option value={4}>P4 · Low</option>
-                    </select>
-                  </div>
-                  <div>
-                    <label className="text-[10px] text-neutral-400 block mb-1">Target Due Date</label>
-                    <input
-                      type="date"
-                      value={goalDueDate}
-                      onChange={(e) => setGoalDueDate(e.target.value)}
-                      className="w-full rounded bg-neutral-900 border border-neutral-800 px-2 py-1 text-neutral-100"
-                    />
-                  </div>
-                </div>
-                <div>
-                  <label className="text-[10px] text-neutral-400 block mb-1">Description / Notes</label>
-                  <input
-                    type="text"
-                    value={goalDescription}
-                    onChange={(e) => setGoalDescription(e.target.value)}
-                    className="w-full rounded bg-neutral-900 border border-neutral-800 px-2 py-1 text-neutral-100"
-                  />
-                </div>
-              </div>
-
-              <div className="flex justify-end gap-2 pt-1 border-t border-neutral-800/80">
-                <button
-                  type="button"
-                  onClick={() => setShowAddGoal(false)}
-                  className="px-2.5 py-1 text-neutral-400 hover:text-white"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={pending || !goalTitle.trim()}
-                  className="rounded bg-neutral-100 px-3 py-1 font-semibold text-neutral-950 hover:bg-neutral-200"
-                >
-                  Save Goal
-                </button>
-              </div>
-            </form>
+            <AddGoalModal
+              onClose={() => setShowAddGoal(false)}
+              onSubmit={handleAddGoal}
+            />
           )}
 
           {goals.length === 0 ? (
@@ -1357,106 +1668,10 @@ export default function CourseDetailClient({ details }: { details: CourseDetailD
 
           {/* Add Task Modal */}
           {showAddTask && (
-            <form onSubmit={handleAddTask} className="rounded-lg border border-neutral-700 bg-neutral-950 p-3 space-y-3 text-xs font-mono">
-              <div className="flex items-center justify-between">
-                <span className="font-semibold text-neutral-200">Add Course Task</span>
-                <button
-                  type="button"
-                  onClick={() => setShowAddTask(false)}
-                  className="text-neutral-500 hover:text-white"
-                >
-                  &times;
-                </button>
-              </div>
-              <div className="space-y-2">
-                <div>
-                  <label className="text-[10px] text-neutral-400 block mb-1">Task Title *</label>
-                  <input
-                    type="text"
-                    required
-                    value={taskTitle}
-                    onChange={(e) => setTaskTitle(e.target.value)}
-                    className="w-full rounded bg-neutral-900 border border-neutral-800 px-2 py-1 text-neutral-100"
-                  />
-                </div>
-                <div className="grid grid-cols-3 gap-2">
-                  <div>
-                    <label className="text-[10px] text-neutral-400 block mb-1">Priority</label>
-                    <select
-                      value={taskPriority}
-                      onChange={(e) => setTaskPriority(parseInt(e.target.value, 10))}
-                      className="w-full rounded bg-neutral-900 border border-neutral-800 px-2 py-1.5 text-neutral-100"
-                    >
-                      <option value={1}>P1 · High</option>
-                      <option value={2}>P2 · Med</option>
-                      <option value={3}>P3 · Normal</option>
-                      <option value={4}>P4 · Low</option>
-                    </select>
-                  </div>
-                  <div>
-                    <label className="text-[10px] text-neutral-400 block mb-1">Duration (min)</label>
-                    <input
-                      type="number"
-                      value={taskDuration}
-                      onChange={(e) => setTaskDuration(e.target.value)}
-                      className="w-full rounded bg-neutral-900 border border-neutral-800 px-2 py-1 text-neutral-100"
-                    />
-                  </div>
-                  <div>
-                    <label className="text-[10px] text-neutral-400 block mb-1">Deadline Date</label>
-                    <input
-                      type="date"
-                      value={taskDeadline}
-                      onChange={(e) => setTaskDeadline(e.target.value)}
-                      className="w-full rounded bg-neutral-900 border border-neutral-800 px-2 py-1 text-neutral-100"
-                    />
-                  </div>
-                </div>
-                <div>
-                  <label className="text-[10px] text-neutral-400 block mb-1">Notes</label>
-                  <input
-                    type="text"
-                    value={taskNotes}
-                    onChange={(e) => setTaskNotes(e.target.value)}
-                    className="w-full rounded bg-neutral-900 border border-neutral-800 px-2 py-1 text-neutral-100"
-                  />
-                </div>
-
-                {/* CRUCIAL: EXPLICIT TASK -> GOAL TOGGLE */}
-                <div className="rounded-lg border border-neutral-800 bg-neutral-900/60 p-2.5 flex items-start gap-2.5 mt-2">
-                  <input
-                    type="checkbox"
-                    id="addAsGoalCheckbox"
-                    checked={taskAddAsGoal}
-                    onChange={(e) => setTaskAddAsGoal(e.target.checked)}
-                    className="mt-0.5 h-4 w-4 rounded border-neutral-700 bg-neutral-950 text-amber-500 focus:ring-0 focus:ring-offset-0"
-                  />
-                  <label htmlFor="addAsGoalCheckbox" className="text-[11px] text-neutral-300 leading-tight cursor-pointer">
-                    <span className="font-semibold text-neutral-100 block">Add this as a Goal</span>
-                    <span className="text-[10px] text-neutral-400 block">
-                      Also creates a canonical goal in the global goals system and links this task to it.
-                    </span>
-                  </label>
-                </div>
-              </div>
-
-              <div className="flex justify-end gap-2 pt-1 border-t border-neutral-800/80">
-                <button
-                  type="button"
-                  onClick={() => setShowAddTask(false)}
-                  className="px-2.5 py-1 text-neutral-400 hover:text-white"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={pending || !taskTitle.trim()}
-                  className="rounded bg-neutral-100 px-3 py-1 font-semibold text-neutral-950 hover:bg-neutral-200"
-                >
-                  Save Task
-                </button>
-              </div>
-            </form>
+            <AddTaskModal
+              onClose={() => setShowAddTask(false)}
+              onSubmit={handleAddTask}
+            />
           )}
 
           {tasks.length === 0 ? (
