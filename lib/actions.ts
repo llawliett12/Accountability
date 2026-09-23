@@ -2,544 +2,899 @@
 
 import { createClient } from "@/lib/supabase/server";
 import { revalidatePath } from "next/cache";
-import { occurrenceDatesInRange } from "./engine";
+import {
+  computeDisciplineScore,
+  DayMetrics,
+  explainScore,
+  DEFAULT_WEIGHTS,
+  DEFAULT_VERDICT_BANDS,
+  ScoringWeights,
+  nextStreakState,
+} from "@/lib/scoring/engine";
+import { recomputeAndStoreProgress } from "@/lib/goals/actions";
 import { todayISO } from "@/lib/date";
-import type { AttendanceStatus, AssessmentType, AssessmentStatus, DeadlineStatus } from "./types";
 
-async function requireUser() {
+// Ensures a daily_plans row exists for today (or a given date) and returns its id.
+// Optional userId parameter avoids redundant getUser() network roundtrips when caller already authenticated.
+export async function getOrCreateDailyPlan(date: string = todayISO(), userId?: string) {
+  const supabase = await createClient();
+  let resolvedUserId = userId;
+  if (!resolvedUserId) {
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (!user) throw new Error("Not authenticated");
+    resolvedUserId = user.id;
+  }
+
+  const { data: existing, error: existingError } = await supabase
+    .from("daily_plans")
+    .select("id")
+    .eq("user_id", resolvedUserId)
+    .eq("date", date)
+    .maybeSingle();
+
+  if (existingError) throw existingError;
+
+  if (existing) return existing.id as string;
+
+  const { data: created, error } = await supabase
+    .from("daily_plans")
+    .insert({ user_id: resolvedUserId, date })
+    .select("id")
+    .single();
+
+  if (error) throw error;
+  return created.id as string;
+}
+
+export async function createTask(input: {
+  title: string;
+  category?: string;
+  priority?: number;
+  planned_duration_min?: number;
+  planned_start?: string;
+  planned_end?: string;
+  deadline?: string;
+  notes?: string;
+  is_top3?: boolean;
+  goal_id?: string;
+  course_id?: string | null;
+  daily_plan_id?: string;
+  date?: string;
+}) {
   const supabase = await createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) throw new Error("Not authenticated");
-  return { supabase, user };
-}
 
-function addDays(dateISO: string, days: number): string {
-  const d = new Date(dateISO + "T00:00:00Z");
-  d.setUTCDate(d.getUTCDate() + days);
-  return d.toISOString().slice(0, 10);
-}
+  const dailyPlanId =
+    input.daily_plan_id ??
+    (await getOrCreateDailyPlan(input.date ?? todayISO(), user.id));
 
-// ---------- classes ----------
-
-export async function createClass(input: {
-  name: string;
-  subject?: string;
-  day_of_week: number;
-  start_time: string;
-  end_time: string;
-  location?: string;
-  instructor?: string;
-  attendance_target?: number;
-}) {
-  const { supabase, user } = await requireUser();
-  const { data, error } = await supabase
-    .from("classes")
+  const { data: created, error } = await supabase
+    .from("tasks")
     .insert({
       user_id: user.id,
-      name: input.name,
-      subject: input.subject ?? null,
-      day_of_week: input.day_of_week,
-      start_time: input.start_time,
-      end_time: input.end_time,
-      location: input.location ?? null,
-      instructor: input.instructor ?? null,
-      attendance_target: input.attendance_target ?? 75,
-    })
-    .select("id")
-    .single();
-  if (error) throw error;
-
-  // Generate the next 8 weeks of occurrences immediately so the class shows
-  // up on the calendar without a separate manual step.
-  await generateOccurrences(data.id, todayISO(), addDays(todayISO(), 56));
-
-  revalidatePath("/academics");
-  revalidatePath("/");
-  return data.id as string;
-}
-
-export async function deactivateClass(classId: string) {
-  const { supabase, user } = await requireUser();
-  const { error } = await supabase
-    .from("classes")
-    .update({ active: false })
-    .eq("id", classId)
-    .eq("user_id", user.id);
-  if (error) throw error;
-  revalidatePath("/academics");
-  revalidatePath("/");
-}
-
-// ---------- occurrences ----------
-
-// Idempotent: relies on the (class_id, date) unique constraint, so calling
-// this repeatedly for overlapping ranges never creates duplicate meetings.
-export async function generateOccurrences(classId: string, startISO: string, endISO: string) {
-  const { supabase, user } = await requireUser();
-
-  const { data: cls, error: clsErr } = await supabase
-    .from("classes")
-    .select("id, course_id, day_of_week, start_time, end_time")
-    .eq("id", classId)
-    .eq("user_id", user.id)
-    .single();
-  if (clsErr) throw clsErr;
-
-  const dates = occurrenceDatesInRange(cls.day_of_week, startISO, endISO);
-  if (dates.length === 0) return;
-
-  const rows = dates.map((date) => ({
-    user_id: user.id,
-    class_id: classId,
-    course_id: cls.course_id ?? null,
-    date,
-    start_time: cls.start_time,
-    end_time: cls.end_time,
-    is_extra: false,
-  }));
-
-  const { error } = await supabase
-    .from("class_occurrences")
-    .upsert(rows, { onConflict: "class_id,date", ignoreDuplicates: true });
-  if (error) throw error;
-
-  revalidatePath("/academics");
-  revalidatePath("/academics/calendar");
-  if (cls.course_id) {
-    revalidatePath(`/academics/courses/${cls.course_id}`);
-  }
-  revalidatePath("/");
-}
-
-export async function markAttendance(occurrenceId: string, status: AttendanceStatus) {
-  const { supabase, user } = await requireUser();
-  const { data, error } = await supabase
-    .from("class_occurrences")
-    .update({ attendance_status: status, status: "held" })
-    .eq("id", occurrenceId)
-    .eq("user_id", user.id)
-    .select("class_id")
-    .single();
-  if (error) throw error;
-
-  revalidatePath("/academics");
-  revalidatePath("/academics/calendar");
-  revalidatePath(`/academics/classes/${data.class_id}`);
-  revalidatePath("/");
-  revalidatePath("/plan");
-}
-
-export async function markListening(occurrenceId: string, rating: number) {
-  const { supabase, user } = await requireUser();
-  const { data, error } = await supabase
-    .from("class_occurrences")
-    .update({ listening_rating: rating })
-    .eq("id", occurrenceId)
-    .eq("user_id", user.id)
-    .select("class_id")
-    .single();
-  if (error) throw error;
-  revalidatePath(`/academics/classes/${data.class_id}`);
-}
-
-export async function markPrepared(occurrenceId: string, prepared: boolean) {
-  const { supabase, user } = await requireUser();
-  const { data, error } = await supabase
-    .from("class_occurrences")
-    .update({ prepared })
-    .eq("id", occurrenceId)
-    .eq("user_id", user.id)
-    .select("class_id")
-    .single();
-  if (error) throw error;
-  revalidatePath("/academics");
-  revalidatePath(`/academics/classes/${data.class_id}`);
-}
-
-export async function markReviewed(occurrenceId: string, reviewed: boolean) {
-  const { supabase, user } = await requireUser();
-  const { data, error } = await supabase
-    .from("class_occurrences")
-    .update({ reviewed })
-    .eq("id", occurrenceId)
-    .eq("user_id", user.id)
-    .select("class_id")
-    .single();
-  if (error) throw error;
-  revalidatePath("/academics");
-  revalidatePath(`/academics/classes/${data.class_id}`);
-}
-
-export async function cancelOccurrence(occurrenceId: string) {
-  const { supabase, user } = await requireUser();
-  const { error } = await supabase
-    .from("class_occurrences")
-    .update({ status: "cancelled" })
-    .eq("id", occurrenceId)
-    .eq("user_id", user.id);
-  if (error) throw error;
-  revalidatePath("/academics");
-  revalidatePath("/academics/calendar");
-}
-
-// ---------- assessments (quizzes/exams) ----------
-
-export async function createAssessment(input: {
-  title: string;
-  type: AssessmentType;
-  date: string;
-  class_id?: string;
-  course_id?: string | null;
-  notes?: string;
-  target_score?: number;
-  prep_hours?: number;
-}) {
-  const { supabase, user } = await requireUser();
-
-  let resolvedClassId = input.class_id ?? null;
-  let resolvedCourseId = input.course_id ?? null;
-
-  // Auto-resolve bidirectional relationship between course_id and class_id.
-  //
-  // `class_id` identifies one specific weekly `classes` row (schema: "one
-  // row per weekly recurrence... a class that meets multiple days gets
-  // multiple `classes` rows"), while `course_id` is the higher-level
-  // grouping. A course legitimately has multiple `classes` rows (different
-  // weekdays, and sometimes different session types — lecture vs lab vs
-  // tutorial). There is no canonical/primary class per course anywhere in
-  // this schema, and `class_id` drives user-visible per-class data
-  // downstream (the "Subject"/class-name column in AcademicsHub, and the
-  // class-attendance↔score correlation in lib/insights/queries.ts, which
-  // deliberately filters out null `class_id` rather than requiring one).
-  // So resolving to an arbitrary class when a course has several would
-  // silently mislabel the assessment/deadline and could feed its score
-  // into the wrong slot's attendance correlation.
-  //
-  // The only correct resolution is: if this course maps to EXACTLY ONE
-  // class, use it (unambiguous); otherwise leave class_id null, exactly
-  // like every other entry point in this app (AssessmentQuickAdd,
-  // DeadlineQuickAdd, AcademicsHub) always requires the user to pick a
-  // specific class explicitly rather than guessing one. `.limit(2)` (fetch
-  // up to 2 rows, then check the count) makes that "exactly one" check
-  // explicit and deterministic, rather than relying on `.maybeSingle()`'s
-  // error being silently discarded for a multi-row result.
-  if (resolvedCourseId && !resolvedClassId) {
-    const { data: candidates } = await supabase
-      .from("classes")
-      .select("id")
-      .eq("course_id", resolvedCourseId)
-      .eq("user_id", user.id)
-      .limit(2);
-    if (candidates?.length === 1) {
-      resolvedClassId = candidates[0].id;
-    }
-  } else if (resolvedClassId && !resolvedCourseId) {
-    const { data: cls } = await supabase
-      .from("classes")
-      .select("course_id")
-      .eq("id", resolvedClassId)
-      .eq("user_id", user.id)
-      .maybeSingle();
-    if (cls?.course_id) {
-      resolvedCourseId = cls.course_id;
-    }
-  }
-
-  const { data, error } = await supabase
-    .from("assessments")
-    .insert({
-      user_id: user.id,
+      daily_plan_id: dailyPlanId,
       title: input.title,
-      type: input.type,
-      date: input.date,
-      class_id: resolvedClassId,
-      course_id: resolvedCourseId,
-      notes: input.notes ?? null,
-      target_score: input.target_score ?? null,
-      prep_hours: input.prep_hours ?? null,
-    })
-    .select("id")
-    .single();
-  if (error) throw error;
-
-  revalidatePath("/academics");
-  revalidatePath("/academics/assessments");
-  revalidatePath("/academics/calendar");
-  if (resolvedCourseId) {
-    revalidatePath(`/academics/courses/${resolvedCourseId}`);
-  }
-  revalidatePath("/");
-  return data.id as string;
-}
-
-export async function addPracticeScore(assessmentId: string, score: number) {
-  const { supabase, user } = await requireUser();
-  const { data: existing, error: fetchError } = await supabase
-    .from("assessments")
-    .select("practice_scores")
-    .eq("id", assessmentId)
-    .eq("user_id", user.id)
-    .single();
-  if (fetchError) throw fetchError;
-  const scores = [...((existing?.practice_scores as number[]) ?? []), score];
-  const { error } = await supabase
-    .from("assessments")
-    .update({ practice_scores: scores })
-    .eq("id", assessmentId)
-    .eq("user_id", user.id);
-  if (error) throw error;
-  revalidatePath(`/academics/assessments/${assessmentId}`);
-}
-
-export async function recordAssessmentScore(
-  assessmentId: string,
-  score: number,
-  maxScore: number
-) {
-  const { supabase, user } = await requireUser();
-  const status: AssessmentStatus = "completed";
-
-  const { data: existing } = await supabase
-    .from("assessments")
-    .select("course_id")
-    .eq("id", assessmentId)
-    .eq("user_id", user.id)
-    .maybeSingle();
-
-  const { error } = await supabase
-    .from("assessments")
-    .update({ score, max_score: maxScore, status })
-    .eq("id", assessmentId)
-    .eq("user_id", user.id);
-  if (error) throw error;
-  revalidatePath("/academics");
-  revalidatePath("/academics/assessments");
-  revalidatePath(`/academics/assessments/${assessmentId}`);
-  if (existing?.course_id) {
-    revalidatePath(`/academics/courses/${existing.course_id}`);
-  }
-  revalidatePath("/");
-}
-
-// ---------- deadlines ----------
-
-export async function createDeadline(input: {
-  title: string;
-  due_date: string;
-  class_id?: string;
-  course_id?: string | null;
-  category?: string;
-  notes?: string;
-}) {
-  const { supabase, user } = await requireUser();
-
-  let resolvedClassId = input.class_id ?? null;
-  let resolvedCourseId = input.course_id ?? null;
-
-  // Same bidirectional resolution as createAssessment above: only resolve
-  // class_id from course_id when the course maps to exactly one class row
-  // (see the detailed comment there for why an arbitrary pick is wrong).
-  if (resolvedCourseId && !resolvedClassId) {
-    const { data: candidates } = await supabase
-      .from("classes")
-      .select("id")
-      .eq("course_id", resolvedCourseId)
-      .eq("user_id", user.id)
-      .limit(2);
-    if (candidates?.length === 1) {
-      resolvedClassId = candidates[0].id;
-    }
-  } else if (resolvedClassId && !resolvedCourseId) {
-    const { data: cls } = await supabase
-      .from("classes")
-      .select("course_id")
-      .eq("id", resolvedClassId)
-      .eq("user_id", user.id)
-      .maybeSingle();
-    if (cls?.course_id) {
-      resolvedCourseId = cls.course_id;
-    }
-  }
-
-  const { data, error } = await supabase
-    .from("deadlines")
-    .insert({
-      user_id: user.id,
-      title: input.title,
-      due_date: input.due_date,
-      class_id: resolvedClassId,
-      course_id: resolvedCourseId,
       category: input.category ?? null,
+      priority: input.priority ?? 3,
+      planned_duration_min: input.planned_duration_min ?? null,
+      planned_start: input.planned_start ?? null,
+      planned_end: input.planned_end ?? null,
+      deadline: input.deadline ?? null,
       notes: input.notes ?? null,
+      is_top3: input.is_top3 ?? false,
+      goal_id: input.goal_id ?? null,
+      course_id: input.course_id ?? null,
     })
-    .select("id")
+    .select("*")
+    .single();
+
+  if (error) throw error;
+
+  try {
+    await bumpStreak(supabase, user.id, "planning", todayISO());
+  } catch (streakErr) {
+    console.warn("Non-fatal: bumpStreak failed:", streakErr);
+  }
+
+  // A newly linked task changes its goal's task-derived progress (denominator
+  // grows even before completion), so the goal tree needs a fresh number.
+  if (input.goal_id) {
+    try {
+      await recomputeAndStoreProgress(user.id);
+    } catch (progressErr) {
+      console.warn("Non-fatal: recomputeAndStoreProgress failed:", progressErr);
+    }
+  }
+
+  revalidatePath("/plan");
+  revalidatePath("/academics");
+  if (input.course_id) {
+    revalidatePath(`/academics/courses/${input.course_id}`);
+  }
+  revalidatePath("/");
+  return created;
+}
+
+export async function updateTaskStatus(taskId: string, status: string, clientId?: string) {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) throw new Error("Not authenticated");
+
+  const { data: updated, error } = await supabase
+    .from("tasks")
+    .update({ status, updated_at: new Date().toISOString() })
+    .eq("id", taskId)
+    .eq("user_id", user.id)
+    .select("goal_id, course_id")
+    .single();
+
+  if (error) throw error;
+
+  // Secondary telemetry/logging: clientId (set when this call is a replay
+  // from the offline queue) makes a re-sent retry a safe no-op.
+  // Must NOT fail the primary task update if secondary logging fails.
+  try {
+    if (clientId) {
+      const { error: logError } = await supabase.from("task_logs").upsert(
+        {
+          task_id: taskId,
+          user_id: user.id,
+          event_type: "status_change",
+          value: status,
+          client_id: clientId,
+        },
+        { onConflict: "user_id,client_id", ignoreDuplicates: true }
+      );
+      if (logError) {
+        console.warn("Non-fatal: task_logs upsert warning:", logError.message);
+      }
+    } else {
+      const { error: logError } = await supabase.from("task_logs").insert({
+        task_id: taskId,
+        user_id: user.id,
+        event_type: "status_change",
+        value: status,
+      });
+      if (logError) {
+        console.warn("Non-fatal: task_logs insert warning:", logError.message);
+      }
+    }
+  } catch (logErr) {
+    console.warn("Non-fatal: task_logs write exception:", logErr);
+  }
+
+  // Real task completion is the whole point of task-linked goal progress —
+  // recompute so a completed/skipped/etc. task is reflected immediately.
+  // Must NOT fail the primary task update if goal recalculation encounters an issue.
+  if (updated?.goal_id) {
+    try {
+      await recomputeAndStoreProgress(user.id);
+    } catch (goalErr) {
+      console.warn("Non-fatal: recomputeAndStoreProgress failed:", goalErr);
+    }
+  }
+
+  revalidatePath("/plan");
+  revalidatePath("/academics");
+  if (updated?.course_id) {
+    revalidatePath(`/academics/courses/${updated.course_id}`);
+  }
+  revalidatePath("/");
+  return { success: true, taskId, status };
+}
+
+export async function updateTask(
+  taskId: string,
+  patch: {
+    title?: string;
+    is_top3?: boolean;
+    planned_duration_min?: number | null;
+    planned_start?: string | null;
+    planned_end?: string | null;
+    priority?: number;
+    goal_id?: string | null;
+    course_id?: string | null;
+    status?: string;
+  }
+) {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) throw new Error("Not authenticated");
+
+  const { data: updated, error } = await supabase
+    .from("tasks")
+    .update({
+      ...patch,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", taskId)
+    .eq("user_id", user.id)
+    .select("goal_id, course_id")
+    .single();
+
+  if (error) throw error;
+
+  if (patch.goal_id !== undefined || updated?.goal_id) {
+    try {
+      await recomputeAndStoreProgress(user.id);
+    } catch (goalErr) {
+      console.warn("Non-fatal: recomputeAndStoreProgress failed:", goalErr);
+    }
+  }
+
+  revalidatePath("/plan");
+  revalidatePath("/academics");
+  const affectedCourseId = patch.course_id || updated?.course_id;
+  if (affectedCourseId) {
+    revalidatePath(`/academics/courses/${affectedCourseId}`);
+  }
+  revalidatePath("/");
+  return updated;
+}
+
+export async function deleteTask(taskId: string) {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) throw new Error("Not authenticated");
+
+  const { data: task } = await supabase
+    .from("tasks")
+    .select("goal_id, course_id")
+    .eq("id", taskId)
+    .eq("user_id", user.id)
+    .maybeSingle();
+
+  const { error } = await supabase
+    .from("tasks")
+    .delete()
+    .eq("id", taskId)
+    .eq("user_id", user.id);
+
+  if (error) throw error;
+
+  if (task?.goal_id) {
+    try {
+      await recomputeAndStoreProgress(user.id);
+    } catch (goalErr) {
+      console.warn("Non-fatal: recomputeAndStoreProgress failed:", goalErr);
+    }
+  }
+
+  revalidatePath("/plan");
+  revalidatePath("/academics");
+  if (task?.course_id) {
+    revalidatePath(`/academics/courses/${task.course_id}`);
+  }
+  revalidatePath("/");
+  return { success: true, taskId };
+}
+
+// Reconciliation: never silently assumes failure. Explicitly records the
+// user's answer for a planned task with no tracking data.
+export async function reconcileTask(
+  taskId: string,
+  answer: "did_but_forgot" | "didnt_do" | "rescheduled" | "did_something_else" | "unexpected_event"
+) {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) throw new Error("Not authenticated");
+
+  const statusMap: Record<string, string> = {
+    did_but_forgot: "completed",
+    didnt_do: "skipped",
+    rescheduled: "rescheduled",
+    did_something_else: "skipped",
+    unexpected_event: "skipped",
+  };
+
+  const { data: updated, error } = await supabase
+    .from("tasks")
+    .update({ status: statusMap[answer], updated_at: new Date().toISOString() })
+    .eq("id", taskId)
+    .eq("user_id", user.id)
+    .select("goal_id")
     .single();
   if (error) throw error;
 
-  revalidatePath("/academics");
-  revalidatePath("/academics/deadlines");
-  revalidatePath("/academics/calendar");
-  if (resolvedCourseId) {
-    revalidatePath(`/academics/courses/${resolvedCourseId}`);
-  }
-  revalidatePath("/");
-  return data.id as string;
+  const { error: logError } = await supabase.from("task_logs").insert({
+    task_id: taskId,
+    user_id: user.id,
+    event_type: "reconciliation_answer",
+    value: answer,
+  });
+  if (logError) throw logError;
+
+  if (updated?.goal_id) await recomputeAndStoreProgress(user.id);
+
+  revalidatePath("/plan");
+  revalidatePath("/night");
 }
 
-export async function updateDeadlineStatus(deadlineId: string, status: DeadlineStatus) {
-  const { supabase, user } = await requireUser();
-  const { data: existing, error } = await supabase
-    .from("deadlines")
-    .update({ status })
-    .eq("id", deadlineId)
+export async function createCheckIn(input: {
+  actual_activity: string;
+  intended_task_id?: string;
+  drift_state: "on_track" | "drifting" | "unknown";
+  clientId?: string;
+  startedAt?: string;
+}) {
+  const actualActivity = input.actual_activity.trim();
+  if (!actualActivity) throw new Error("Activity cannot be empty");
+  const startedAt = input.startedAt && !Number.isNaN(Date.parse(input.startedAt))
+    ? input.startedAt
+    : new Date().toISOString();
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) throw new Error("Not authenticated");
+
+  const checkIn = {
+    user_id: user.id,
+    actual_activity: actualActivity,
+    intended_task_id: input.intended_task_id ?? null,
+    drift_state: input.drift_state,
+    client_id: input.clientId ?? null,
+    timestamp: startedAt,
+    status: "ongoing",
+    entry_type: "work",
+  };
+  const { data: inserted, error: insertError } = await supabase.from("check_ins").insert(checkIn).select("id, actual_activity, timestamp, status, completed_at").maybeSingle();
+  if (insertError && (!input.clientId || insertError.code !== "23505")) throw insertError;
+
+  // A queued replay may repeat a write whose response was lost. The unique
+  // (user_id, client_id) index makes this lookup safe and keeps the original
+  // timestamp/status intact instead of rewriting an already-synced activity.
+  const { data: saved, error: savedError } = inserted
+    ? { data: inserted, error: null }
+    : await supabase
+      .from("check_ins")
+      .select("id, actual_activity, timestamp, status, completed_at")
+      .eq("user_id", user.id)
+      .eq("client_id", input.clientId!)
+      .maybeSingle();
+  if (savedError || !saved) throw savedError ?? insertError ?? new Error("Activity was not saved");
+
+  await bumpStreak(supabase, user.id, "tracking", todayISO());
+
+  revalidatePath("/now");
+  revalidatePath("/");
+  revalidatePath("/review");
+  return saved;
+}
+
+export async function createQuickActivity(input: {
+  actual_activity: string;
+  timestamp?: string;
+  clientId?: string;
+}) {
+  const title = input.actual_activity.trim();
+  if (!title) throw new Error("Activity cannot be empty");
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) throw new Error("Not authenticated");
+
+  const startedAt = input.timestamp ?? new Date().toISOString();
+  const record = {
+    user_id: user.id,
+    actual_activity: title,
+    timestamp: startedAt,
+    status: "logged",
+    entry_type: "journal",
+    client_id: input.clientId ?? null,
+  };
+
+  const { data: inserted, error: insertError } = await supabase
+    .from("check_ins")
+    .insert(record)
+    .select("id, actual_activity, timestamp, status, entry_type")
+    .maybeSingle();
+
+  if (insertError && (!input.clientId || insertError.code !== "23505")) throw insertError;
+
+  const { data: saved, error: savedError } = inserted
+    ? { data: inserted, error: null }
+    : await supabase
+        .from("check_ins")
+        .select("id, actual_activity, timestamp, status, entry_type")
+        .eq("user_id", user.id)
+        .eq("client_id", input.clientId!)
+        .maybeSingle();
+
+  if (savedError || !saved) throw savedError ?? insertError ?? new Error("Quick activity was not saved");
+
+  revalidatePath("/");
+  revalidatePath("/review");
+  return saved;
+}
+
+export async function updateCheckIn(checkInId: string, actualActivity: string) {
+  const title = actualActivity.trim();
+  if (!title) throw new Error("Activity cannot be empty");
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error("Not authenticated");
+  const { error } = await supabase.from("check_ins").update({ actual_activity: title }).eq("id", checkInId).eq("user_id", user.id);
+  if (error) throw error;
+  revalidatePath("/");
+  revalidatePath("/now");
+}
+
+export async function deleteCheckIn(checkInId: string) {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error("Not authenticated");
+  const { error } = await supabase.from("check_ins").delete().eq("id", checkInId).eq("user_id", user.id);
+  if (error) throw error;
+  revalidatePath("/");
+  revalidatePath("/now");
+  revalidatePath("/review");
+}
+
+export async function updateCheckInStatus(checkInId: string, status: "ongoing" | "paused" | "completed") {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error("Not authenticated");
+  const changes = status === "completed"
+    ? { status, completed_at: new Date().toISOString() }
+    : { status, completed_at: null };
+  const { data, error } = await supabase
+    .from("check_ins")
+    .update(changes)
+    .eq("id", checkInId)
     .eq("user_id", user.id)
-    .select("course_id")
+    .in("status", ["ongoing", "paused"])
+    .select("id, actual_activity, timestamp, status, completed_at")
     .maybeSingle();
   if (error) throw error;
-  revalidatePath("/academics");
-  revalidatePath("/academics/deadlines");
-  revalidatePath("/academics/calendar");
-  if (existing?.course_id) {
-    revalidatePath(`/academics/courses/${existing.course_id}`);
-  }
+  if (!data) throw new Error("Activity is no longer current");
   revalidatePath("/");
+  revalidatePath("/now");
+  revalidatePath("/review");
+  return data;
 }
 
-export async function updateAssessment(
-  assessmentId: string,
-  patch: {
-    title?: string;
-    date?: string;
-    score?: number | null;
-    max_score?: number | null;
-    class_id?: string | null;
-    course_id?: string | null;
-    status?: AssessmentStatus;
-    type?: AssessmentType;
-    notes?: string | null;
-    target_score?: number | null;
-  }
+export async function completeCheckIn(checkInId: string) {
+  return updateCheckInStatus(checkInId, "completed");
+}
+
+// --- Focus timer: timestamp-based so it survives Android tab backgrounding ---
+
+// clientId lets the offline queue generate the session's id on-device (when
+// starting a session while offline) so that a subsequent pause/stop event —
+// which the user may also trigger before the session has ever synced — can
+// reference the same id from the moment it's created. Passing it through as
+// an explicit `id` and upserting with ignoreDuplicates makes a queued replay
+// safe even if the row already made it to the server some other way.
+export async function startFocusSession(
+  taskId?: string,
+  assessmentId?: string,
+  clientId?: string
 ) {
-  const { supabase, user } = await requireUser();
-  const updatePayload: Record<string, unknown> = { ...patch };
-  if (patch.score !== undefined && patch.max_score !== undefined) {
-    if (patch.score !== null && patch.max_score !== null && patch.max_score > 0) {
-      updatePayload.status = "completed";
-    }
-  }
-  const { error } = await supabase
-    .from("assessments")
-    .update(updatePayload)
-    .eq("id", assessmentId)
-    .eq("user_id", user.id);
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) throw new Error("Not authenticated");
+
+  const id = clientId ?? crypto.randomUUID();
+
+  const { error } = await supabase.from("focus_sessions").upsert(
+    {
+      id,
+      user_id: user.id,
+      task_id: taskId ?? null,
+      assessment_id: assessmentId ?? null,
+      started_at: new Date().toISOString(),
+    },
+    { onConflict: "id", ignoreDuplicates: true }
+  );
+
   if (error) throw error;
-  revalidatePath("/academics");
-  revalidatePath("/academics/assessments");
-  revalidatePath(`/academics/assessments/${assessmentId}`);
-  if (patch.course_id) {
-    revalidatePath(`/academics/courses/${patch.course_id}`);
-  }
-  revalidatePath("/");
+  revalidatePath("/now");
+  return id;
 }
 
-export async function deleteAssessment(assessmentId: string) {
-  const { supabase, user } = await requireUser();
+export async function startPause(sessionId: string, reason: string, clientId?: string) {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) throw new Error("Not authenticated");
+
+  const { error: sessionError } = await supabase
+    .from("focus_sessions")
+    .select("id")
+    .eq("id", sessionId)
+    .eq("user_id", user.id)
+    .single();
+  if (sessionError) throw sessionError;
+
+  const id = clientId ?? crypto.randomUUID();
+
+  const { error } = await supabase.from("focus_pauses").upsert(
+    {
+      id,
+      focus_session_id: sessionId,
+      started_at: new Date().toISOString(),
+      reason,
+    },
+    { onConflict: "id", ignoreDuplicates: true }
+  );
+  if (error) throw error;
+  revalidatePath("/now");
+  return id;
+}
+
+export async function endPause(pauseId: string) {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) throw new Error("Not authenticated");
+
+  const { data, error } = await supabase
+    .from("focus_pauses")
+    .update({ ended_at: new Date().toISOString() })
+    .eq("id", pauseId)
+    .select("id")
+    .single();
+  if (error) throw error;
+  if (!data) throw new Error("Pause not found");
+  revalidatePath("/now");
+}
+
+// Stops the session and computes focused duration = total elapsed - paused time.
+// All from timestamps stored in Postgres, never a client-side live counter.
+export async function stopFocusSession(sessionId: string) {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) throw new Error("Not authenticated");
+
+  const { data: session, error: sessionErr } = await supabase
+    .from("focus_sessions")
+    .select("started_at")
+    .eq("id", sessionId)
+    .single();
+  if (sessionErr) throw sessionErr;
+
+  const { data: pauses, error: pausesErr } = await supabase
+    .from("focus_pauses")
+    .select("started_at, ended_at")
+    .eq("focus_session_id", sessionId);
+  if (pausesErr) throw pausesErr;
+
+  const endedAt = new Date();
+  const startedAt = new Date(session.started_at);
+  const totalElapsedSec = (endedAt.getTime() - startedAt.getTime()) / 1000;
+
+  const pausedSec = (pauses ?? []).reduce((sum, p) => {
+    const pStart = new Date(p.started_at).getTime();
+    const pEnd = p.ended_at ? new Date(p.ended_at).getTime() : endedAt.getTime();
+    return sum + Math.max(0, (pEnd - pStart) / 1000);
+  }, 0);
+
+  const focusedDurationSec = Math.max(0, Math.round(totalElapsedSec - pausedSec));
+
+  const { error } = await supabase
+    .from("focus_sessions")
+    .update({
+      ended_at: endedAt.toISOString(),
+      focused_duration_sec: focusedDurationSec,
+    })
+    .eq("id", sessionId);
+  if (error) throw error;
+
+  if (focusedDurationSec > 0) {
+    await bumpStreak(supabase, user.id, "study", todayISO());
+  }
+
+  revalidatePath("/now");
+  return focusedDurationSec;
+}
+
+// --- Discipline scoring: pulls the day's raw numbers, runs the pure engine ---
+
+export async function computeAndStoreDailyScore(date: string = todayISO()) {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) throw new Error("Not authenticated");
+
+  const { data: plan } = await supabase
+    .from("daily_plans")
+    .select("id")
+    .eq("user_id", user.id)
+    .eq("date", date)
+    .maybeSingle();
+
+  const { data: tasks } = await supabase
+    .from("tasks")
+    .select("id, status, planned_start, planned_duration_min")
+    .eq("daily_plan_id", plan?.id ?? "");
+
+  const taskIds = (tasks ?? []).map((t) => t.id);
+
+  // Real first-start timestamps, replacing the earlier "not not_started" proxy.
+  const { data: startLogs } = taskIds.length
+    ? await supabase
+        .from("task_logs")
+        .select("task_id, created_at")
+        .in("task_id", taskIds)
+        .eq("event_type", "status_change")
+        .eq("value", "in_progress")
+        .order("created_at", { ascending: true })
+    : { data: [] };
+
+  const firstStartByTask = new Map<string, string>();
+  for (const log of startLogs ?? []) {
+    if (!firstStartByTask.has(log.task_id)) firstStartByTask.set(log.task_id, log.created_at);
+  }
+
+  const { data: sessions } = await supabase
+    .from("focus_sessions")
+    .select("focused_duration_sec")
+    .eq("user_id", user.id)
+    .gte("started_at", `${date}T00:00:00`)
+    .lte("started_at", `${date}T23:59:59`);
+
+  const { data: checkIns } = await supabase
+    .from("check_ins")
+    .select("drift_state")
+    .eq("user_id", user.id)
+    .gte("timestamp", `${date}T00:00:00`)
+    .lte("timestamp", `${date}T23:59:59`);
+
+  const config = await getOrCreateScoringConfig(user.id);
+  const taskList = tasks ?? [];
+
+  const tasksOnTimeStart = taskList.filter((t) => {
+    if (!t.planned_start) return false;
+    const actualStart = firstStartByTask.get(t.id);
+    if (!actualStart) return false;
+    const diffMin =
+      Math.abs(new Date(actualStart).getTime() - new Date(t.planned_start).getTime()) / 60000;
+    return diffMin <= config.onTimeToleranceMin;
+  }).length;
+
+  const plannedStudyMinutes = taskList.reduce(
+    (sum, t) => sum + (t.planned_duration_min ?? 0),
+    0
+  );
+
+  const metrics: DayMetrics = {
+    tasksPlanned: taskList.length,
+    tasksCompleted: taskList.filter((t) => t.status === "completed").length,
+    tasksPartial: taskList.filter((t) => t.status === "partial").length,
+    tasksUnreconciled: taskList.filter((t) => t.status === "unreconciled").length,
+    tasksOnTimeStart,
+    plannedStudyMinutes,
+    actualFocusMinutes:
+      (sessions ?? []).reduce((s, f) => s + (f.focused_duration_sec ?? 0), 0) / 60,
+    expectedCheckIns: config.expectedCheckIns,
+    actualCheckIns: (checkIns ?? []).length,
+    driftMinutes: (checkIns ?? []).filter((c) => c.drift_state === "drifting").length * 15,
+    missedCommitments: taskList.filter((t) => t.status === "skipped").length,
+    reschedules: taskList.filter((t) => t.status === "rescheduled").length,
+  };
+
+  const result = computeDisciplineScore(metrics, config.weights, config.verdictBands);
+  const explanation = explainScore(result.components, result.verdictLabel);
+
+  const { error: scoreError } = await supabase.from("discipline_scores").upsert(
+    {
+      user_id: user.id,
+      date,
+      score: result.score,
+      negative_score: result.negativeScore,
+      components: result.components,
+    },
+    { onConflict: "user_id,date" }
+  );
+  if (scoreError) throw scoreError;
+
+  const { error: verdictError } = await supabase.from("discipline_verdicts").upsert(
+    {
+      user_id: user.id,
+      date,
+      label: result.verdictLabel,
+      explanation,
+    },
+    { onConflict: "user_id,date" }
+  );
+  if (verdictError) throw verdictError;
+
+  await bumpStreak(supabase, user.id, "daily_review", date);
+
+  revalidatePath(`/discipline/${date}`);
+  revalidatePath(`/report/${date}`);
+  revalidatePath("/");
+
+  return result;
+}
+
+// Reads the user's configurable scoring weights/verdict bands/constants,
+// creating the row with engine defaults on first use. Editing this row
+// (via /settings, or directly in Supabase) changes future scores with no
+// redeploy — this is what makes the formula "transparent and configurable."
+export async function getOrCreateScoringConfig(userId: string) {
+  const supabase = await createClient();
+
   const { data: existing } = await supabase
-    .from("assessments")
-    .select("course_id")
-    .eq("id", assessmentId)
-    .eq("user_id", user.id)
+    .from("scoring_config")
+    .select("weights, verdict_bands, expected_check_ins, on_time_tolerance_min")
+    .eq("user_id", userId)
     .maybeSingle();
 
-  const { error } = await supabase
-    .from("assessments")
-    .delete()
-    .eq("id", assessmentId)
-    .eq("user_id", user.id);
-  if (error) throw error;
-  revalidatePath("/academics");
-  revalidatePath("/academics/assessments");
-  revalidatePath("/academics/calendar");
-  if (existing?.course_id) {
-    revalidatePath(`/academics/courses/${existing.course_id}`);
+  if (existing) {
+    return {
+      weights: existing.weights as ScoringWeights,
+      verdictBands: existing.verdict_bands as Record<string, number>,
+      expectedCheckIns: existing.expected_check_ins as number,
+      onTimeToleranceMin: existing.on_time_tolerance_min as number,
+    };
   }
-  revalidatePath("/");
+
+  const { error } = await supabase.from("scoring_config").insert({
+    user_id: userId,
+    weights: DEFAULT_WEIGHTS,
+    verdict_bands: DEFAULT_VERDICT_BANDS,
+  });
+  // A concurrent insert (e.g. a duplicate request) is fine to ignore here —
+  // the defaults are the same either way.
+  if (error && error.code !== "23505") throw error;
+
+  return {
+    weights: DEFAULT_WEIGHTS,
+    verdictBands: DEFAULT_VERDICT_BANDS,
+    expectedCheckIns: 4,
+    onTimeToleranceMin: 15,
+  };
 }
 
-export async function updateDeadline(
-  deadlineId: string,
-  patch: {
-    title?: string;
-    due_date?: string;
-    class_id?: string | null;
-    course_id?: string | null;
-    category?: string | null;
-    notes?: string | null;
-    status?: DeadlineStatus;
-  }
+export async function saveScoringConfig(input: {
+  weights: ScoringWeights;
+  verdictBands: Record<string, number>;
+  expectedCheckIns: number;
+  onTimeToleranceMin: number;
+}) {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) throw new Error("Not authenticated");
+
+  const { error } = await supabase.from("scoring_config").upsert(
+    {
+      user_id: user.id,
+      weights: input.weights,
+      verdict_bands: input.verdictBands,
+      expected_check_ins: input.expectedCheckIns,
+      on_time_tolerance_min: input.onTimeToleranceMin,
+    },
+    { onConflict: "user_id" }
+  );
+  if (error) throw error;
+
+  revalidatePath("/settings");
+}
+
+// --- Streaks: consecutive-day counters, idempotent per day ---
+
+type StreakType = "planning" | "study" | "daily_review" | "tracking";
+
+async function bumpStreak(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  userId: string,
+  streakType: StreakType,
+  date: string
 ) {
-  const { supabase, user } = await requireUser();
-  const { error } = await supabase
-    .from("deadlines")
-    .update(patch)
-    .eq("id", deadlineId)
-    .eq("user_id", user.id);
-  if (error) throw error;
-  revalidatePath("/academics");
-  revalidatePath("/academics/deadlines");
-  revalidatePath("/academics/calendar");
-  if (patch.course_id) {
-    revalidatePath(`/academics/courses/${patch.course_id}`);
-  }
-  revalidatePath("/");
-}
-
-export async function deleteDeadline(deadlineId: string) {
-  const { supabase, user } = await requireUser();
   const { data: existing } = await supabase
-    .from("deadlines")
-    .select("course_id")
-    .eq("id", deadlineId)
-    .eq("user_id", user.id)
+    .from("streaks")
+    .select("current_count, last_date")
+    .eq("user_id", userId)
+    .eq("streak_type", streakType)
     .maybeSingle();
 
-  const { error } = await supabase
-    .from("deadlines")
-    .delete()
-    .eq("id", deadlineId)
-    .eq("user_id", user.id);
-  if (error) throw error;
-  revalidatePath("/academics");
-  revalidatePath("/academics/deadlines");
-  revalidatePath("/academics/calendar");
-  if (existing?.course_id) {
-    revalidatePath(`/academics/courses/${existing.course_id}`);
-  }
-  revalidatePath("/");
+  const { count, alreadyRecordedToday } = nextStreakState(
+    existing?.last_date ?? null,
+    existing?.current_count ?? 0,
+    date
+  );
+
+  if (alreadyRecordedToday) return;
+
+  await supabase.from("streaks").upsert(
+    { user_id: userId, streak_type: streakType, current_count: count, last_date: date },
+    { onConflict: "user_id,streak_type" }
+  );
 }
 
-export async function updateClass(
-  classId: string,
-  patch: {
-    name?: string;
-    subject?: string | null;
-    start_time?: string;
-    end_time?: string;
-    location?: string | null;
-    attendance_target?: number;
-    day_of_week?: number;
-  }
-) {
-  const { supabase, user } = await requireUser();
-  const { error } = await supabase
-    .from("classes")
-    .update(patch)
-    .eq("id", classId)
-    .eq("user_id", user.id);
+export async function toggleTaskTop3(taskId: string, is_top3: boolean) {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) throw new Error("Not authenticated");
+
+  const { data: updated, error } = await supabase
+    .from("tasks")
+    .update({
+      is_top3,
+      priority: is_top3 ? 1 : 3,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", taskId)
+    .eq("user_id", user.id)
+    .select("*")
+    .single();
+
   if (error) throw error;
-  revalidatePath("/academics");
+
+  revalidatePath("/plan");
   revalidatePath("/");
+  return updated;
+}
+
+export async function rolloverUnfinishedTasks(fromDate: string, toDate: string = todayISO()) {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) throw new Error("Not authenticated");
+
+  const { data: fromPlan } = await supabase
+    .from("daily_plans")
+    .select("id")
+    .eq("user_id", user.id)
+    .eq("date", fromDate)
+    .maybeSingle();
+
+  if (!fromPlan) return { count: 0 };
+
+  const { data: unfinished, error: fetchErr } = await supabase
+    .from("tasks")
+    .select("id")
+    .eq("user_id", user.id)
+    .eq("daily_plan_id", fromPlan.id)
+    .in("status", ["not_started", "in_progress", "partial"]);
+
+  if (fetchErr) throw fetchErr;
+  if (!unfinished || unfinished.length === 0) return { count: 0 };
+
+  const targetPlanId = await getOrCreateDailyPlan(toDate, user.id);
+  const taskIds = unfinished.map((t) => t.id);
+
+  const { error: updateErr } = await supabase
+    .from("tasks")
+    .update({
+      daily_plan_id: targetPlanId,
+      updated_at: new Date().toISOString(),
+    })
+    .in("id", taskIds)
+    .eq("user_id", user.id);
+
+  if (updateErr) throw updateErr;
+
+  revalidatePath("/plan");
+  revalidatePath("/");
+  return { count: taskIds.length };
 }
 

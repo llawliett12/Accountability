@@ -201,16 +201,39 @@ export async function createAssessment(input: {
   let resolvedClassId = input.class_id ?? null;
   let resolvedCourseId = input.course_id ?? null;
 
-  // Auto-resolve bidirectional relationship between course_id and class_id
+  // Auto-resolve bidirectional relationship between course_id and class_id.
+  //
+  // `class_id` identifies one specific weekly `classes` row (schema: "one
+  // row per weekly recurrence... a class that meets multiple days gets
+  // multiple `classes` rows"), while `course_id` is the higher-level
+  // grouping. A course legitimately has multiple `classes` rows (different
+  // weekdays, and sometimes different session types — lecture vs lab vs
+  // tutorial). There is no canonical/primary class per course anywhere in
+  // this schema, and `class_id` drives user-visible per-class data
+  // downstream (the "Subject"/class-name column in AcademicsHub, and the
+  // class-attendance↔score correlation in lib/insights/queries.ts, which
+  // deliberately filters out null `class_id` rather than requiring one).
+  // So resolving to an arbitrary class when a course has several would
+  // silently mislabel the assessment/deadline and could feed its score
+  // into the wrong slot's attendance correlation.
+  //
+  // The only correct resolution is: if this course maps to EXACTLY ONE
+  // class, use it (unambiguous); otherwise leave class_id null, exactly
+  // like every other entry point in this app (AssessmentQuickAdd,
+  // DeadlineQuickAdd, AcademicsHub) always requires the user to pick a
+  // specific class explicitly rather than guessing one. `.limit(2)` (fetch
+  // up to 2 rows, then check the count) makes that "exactly one" check
+  // explicit and deterministic, rather than relying on `.maybeSingle()`'s
+  // error being silently discarded for a multi-row result.
   if (resolvedCourseId && !resolvedClassId) {
-    const { data: cls } = await supabase
+    const { data: candidates } = await supabase
       .from("classes")
       .select("id")
       .eq("course_id", resolvedCourseId)
       .eq("user_id", user.id)
-      .maybeSingle();
-    if (cls?.id) {
-      resolvedClassId = cls.id;
+      .limit(2);
+    if (candidates?.length === 1) {
+      resolvedClassId = candidates[0].id;
     }
   } else if (resolvedClassId && !resolvedCourseId) {
     const { data: cls } = await supabase
@@ -315,15 +338,18 @@ export async function createDeadline(input: {
   let resolvedClassId = input.class_id ?? null;
   let resolvedCourseId = input.course_id ?? null;
 
+  // Same bidirectional resolution as createAssessment above: only resolve
+  // class_id from course_id when the course maps to exactly one class row
+  // (see the detailed comment there for why an arbitrary pick is wrong).
   if (resolvedCourseId && !resolvedClassId) {
-    const { data: cls } = await supabase
+    const { data: candidates } = await supabase
       .from("classes")
       .select("id")
       .eq("course_id", resolvedCourseId)
       .eq("user_id", user.id)
-      .maybeSingle();
-    if (cls?.id) {
-      resolvedClassId = cls.id;
+      .limit(2);
+    if (candidates?.length === 1) {
+      resolvedClassId = candidates[0].id;
     }
   } else if (resolvedClassId && !resolvedCourseId) {
     const { data: cls } = await supabase
