@@ -239,3 +239,105 @@ clean, TypeScript clean, production build successful.
   remaining manual step before deploying.
 - Mobile install / offline / push / screenshot-upload flows have not been
   hands-on tested on a real Android device against this merged repo.
+
+## CourseDetailClient audit — "React #441" report, optimistic-state, and error-handling fixes
+
+Follow-up to a user report: opening / submitting the "Add Event" (assessment)
+modal on `/academics/courses/[id]` showed "Minified React error #441" inside
+the modal itself, plus a request to audit `CourseDetailClient.tsx` more
+broadly for regressions from the modal-extraction/performance refactor.
+
+**Note on scope:** this repo was provided as a zip with no `.git` directory,
+so no diff against the referenced pre-refactor commit was possible, and no
+live Supabase project or browser was available in this environment — the
+findings below come from static reading of the code plus `vitest`/`next
+build`, not a reproduced runtime session.
+
+### React error #441 — cause
+
+Decoded, minified React error #441 reads: *"An error occurred in the Server
+Components render. The specific message is omitted in production builds to
+avoid leaking sensitive details. A digest property is included on this error
+instance..."* This is Next.js's standard production-build redaction of any
+unhandled error thrown inside a Server Action (confirmed against Next.js's
+own error-handling docs, not assumed) — it is not specific to assessments or
+to this modal's hooks/render logic. `AddAssessmentModal` (and all five other
+extracted modals) catch errors from their `onSubmit` with `setError(err?.message
+|| fallback)`; when the underlying Server Action throws, `err.message` in a
+production build *is* that generic redacted string, which the modal then
+displays verbatim as if it were a normal validation message.
+
+The specific Server Action a submitted assessment goes through
+(`createAssessment` in `lib/academics/actions.ts`) was investigated as a
+candidate cause. Its course→class auto-resolution query does return an
+error for a multi-row match, but Supabase's JS client resolves that as
+`{ data: null, error }` rather than throwing — so, on reflection, that
+particular code path was not actually capable of producing the crash
+reported in the screenshot (it silently returned the wrong `class_id`
+instead, a data-correctness bug, not a throw). It has been fixed anyway
+(see below) because it was still wrong. The exact DB-level trigger behind
+the reported screenshot remains unconfirmed — that requires live server
+logs or a dev-mode reproduction, neither available in this environment.
+Root cause **partially** established: the redaction mechanism (why a
+server-side error shows as "#441" inside the modal) is confirmed; the
+specific server-side error that triggered it is not.
+
+### Fixes applied
+
+1. **`friendlyErrorMessage()` helper** (`CourseDetailClient.tsx`) — detects
+   the redacted Next.js/React RSC-boundary message shape and substitutes a
+   plain, action-specific fallback instead of showing it to the user; logs
+   `err.digest` to the console when present for server-log correlation.
+   Applied to all six modals' catch blocks and to `handleSaveNotes` /
+   `handleToggleActive`, which previously only `console.error`'d with no
+   user-visible feedback at all.
+2. **Optimistic-update rollback bugs** — `handleToggleDeadlineStatus`,
+   `handleUpdateGoalStatus`, `handleUpdateGoalProgress`, `handleToggleTask`
+   updated local state optimistically but never rolled back on a failed
+   Server Action (their sibling delete handlers already did). Fixed to
+   capture and restore previous state on error, matching the delete
+   handlers' existing pattern.
+3. **`createAssessment` / `createDeadline` course→class auto-resolution**
+   (`lib/academics/actions.ts`) — investigated in detail against the schema
+   and all call sites (see "Follow-up correction" below). `class_id`
+   identifies one specific weekly `classes` row; a course legitimately has
+   several (different weekdays, sometimes different session types), and
+   there is no canonical/primary one. `class_id` also drives real
+   downstream behavior: the "Subject" column in `AcademicsHub.tsx` and the
+   class-attendance↔score correlation in `lib/insights/queries.ts` (which
+   deliberately skips null `class_id` rather than requiring one). So the
+   only correct resolution is to backfill `class_id` from `course_id` when
+   the course maps to **exactly one** class, and leave it null otherwise —
+   never pick an arbitrary one. Implemented with `.limit(2)` + a length
+   check (explicit and deterministic, rather than relying on
+   `.maybeSingle()`'s error being silently discarded on a multi-row
+   result). Added regression tests in `course_detail_pass.test.ts` for the
+   single-class, multi-class, and no-class cases, for both
+   `createAssessment` and `createDeadline`.
+
+### Checked, no action taken
+
+- The single `useEffect` resyncing `slots`/`assessments`/`deadlines`/
+  `goals`/`tasks` from the `details` prop on server revalidation: correct as
+  written, no stale-state or hook-order issue.
+- All six modals: identical hook structure (unconditional `useState` calls,
+  no conditional hooks), no hydration/controlled-input issues found; mobile
+  layout uses responsive grid classes throughout, no fixed pixel widths.
+- `handleAddAssessment`'s locally-constructed optimistic object hardcodes
+  `class_id: null`, which can now be inconsistent with what the server
+  resolves — but `class_id` is not read anywhere in this component's render
+  path, and the existing prop-resync `useEffect` corrects it on the next
+  revalidation, so this has no observable effect today; left unchanged per
+  "don't create speculative fixes."
+
+### Tests / build
+
+`npx vitest run`: 183/183 passing (178 pre-existing + 5 new regression
+tests for the class-resolution fix).
+`npm run build`: clean compile, TypeScript clean, same 27-route topology as
+before these changes — no routes added, removed, or newly dynamic.
+
+### Git
+
+Not performed. This checkout has no `.git` directory and no configured
+remote — there is nothing to commit to or push from in this environment.

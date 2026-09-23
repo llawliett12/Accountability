@@ -11,6 +11,14 @@ const mockUpdate = vi.fn();
 const mockDelete = vi.fn();
 const mockSelect = vi.fn();
 
+// Configurable per test: rows returned for `classes` filtered by course_id,
+// used to exercise the course→class auto-resolution "exactly one match"
+// logic in createAssessment/createDeadline. Reset in beforeEach.
+let mockClassesForCourse: { id: string }[] = [
+  { id: "class-slot-mon" },
+  { id: "class-slot-wed" },
+];
+
 const mockSupabase = {
   auth: {
     getUser: vi.fn().mockResolvedValue({
@@ -66,6 +74,11 @@ const mockSupabase = {
             order: vi.fn(() => ({
               limit: vi.fn().mockResolvedValue({ data: [], error: null }),
             })),
+            limit: vi.fn(() =>
+              table === "classes"
+                ? Promise.resolve({ data: mockClassesForCourse, error: null })
+                : Promise.resolve({ data: [], error: null })
+            ),
             single: vi.fn().mockResolvedValue({
               data: { id: "plan-id", user_id: "test-user-999" },
               error: null,
@@ -97,6 +110,7 @@ vi.mock("@/lib/supabase/server", () => ({
 describe("Course Detail & Home Timetable UX Refinement Pass", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockClassesForCourse = [{ id: "class-slot-mon" }, { id: "class-slot-wed" }];
   });
 
   describe("1. Course Detail Read/Write Actions", () => {
@@ -163,6 +177,75 @@ describe("Course Detail & Home Timetable UX Refinement Pass", () => {
       );
     });
 
+    it("createAssessment leaves class_id null when the course has multiple timetable slots (ambiguous — no arbitrary pick)", async () => {
+      const { createAssessment } = await import("./academics/actions");
+
+      // A course with e.g. Mon/Wed lectures has multiple `classes` rows
+      // sharing the same course_id (mockClassesForCourse default: 2 rows).
+      // There is no canonical class among them, so class_id must stay null
+      // rather than an arbitrary row being picked.
+      await expect(
+        createAssessment({
+          course_id: "course-cs330",
+          title: "Quiz 3",
+          type: "quiz",
+          date: "2026-10-08",
+          target_score: 30,
+        })
+      ).resolves.toBeDefined();
+
+      expect(mockInsert).toHaveBeenCalledWith(
+        "assessments",
+        expect.objectContaining({
+          course_id: "course-cs330",
+          class_id: null,
+          title: "Quiz 3",
+        })
+      );
+    });
+
+    it("createAssessment resolves class_id when the course maps to exactly one class", async () => {
+      mockClassesForCourse = [{ id: "class-solo" }];
+      const { createAssessment } = await import("./academics/actions");
+
+      await createAssessment({
+        course_id: "course-cs330",
+        title: "Quiz 4",
+        type: "quiz",
+        date: "2026-10-15",
+      });
+
+      expect(mockInsert).toHaveBeenCalledWith(
+        "assessments",
+        expect.objectContaining({
+          course_id: "course-cs330",
+          class_id: "class-solo",
+          title: "Quiz 4",
+        })
+      );
+    });
+
+    it("createAssessment leaves class_id null when the course has no classes at all", async () => {
+      mockClassesForCourse = [];
+      const { createAssessment } = await import("./academics/actions");
+
+      await createAssessment({
+        course_id: "course-cs330",
+        title: "Quiz 5",
+        type: "quiz",
+        date: "2026-10-22",
+      });
+
+      expect(mockInsert).toHaveBeenCalledWith(
+        "assessments",
+        expect.objectContaining({
+          course_id: "course-cs330",
+          class_id: null,
+          title: "Quiz 5",
+        })
+      );
+    });
+
     it("createDeadline stores course_id for the course", async () => {
       const { createDeadline } = await import("./academics/actions");
 
@@ -180,6 +263,46 @@ describe("Course Detail & Home Timetable UX Refinement Pass", () => {
           title: "Project Milestone 1",
           due_date: "2026-10-05",
           category: "Project",
+        })
+      );
+    });
+
+    it("createDeadline leaves class_id null when the course has multiple timetable slots", async () => {
+      // Default mockClassesForCourse (set in beforeEach) has 2 rows.
+      const { createDeadline } = await import("./academics/actions");
+
+      await createDeadline({
+        course_id: "course-cs330",
+        title: "Project Milestone 2",
+        due_date: "2026-10-12",
+      });
+
+      expect(mockInsert).toHaveBeenCalledWith(
+        "deadlines",
+        expect.objectContaining({
+          course_id: "course-cs330",
+          class_id: null,
+          title: "Project Milestone 2",
+        })
+      );
+    });
+
+    it("createDeadline resolves class_id when the course maps to exactly one class", async () => {
+      mockClassesForCourse = [{ id: "class-solo" }];
+      const { createDeadline } = await import("./academics/actions");
+
+      await createDeadline({
+        course_id: "course-cs330",
+        title: "Project Milestone 3",
+        due_date: "2026-10-19",
+      });
+
+      expect(mockInsert).toHaveBeenCalledWith(
+        "deadlines",
+        expect.objectContaining({
+          course_id: "course-cs330",
+          class_id: "class-solo",
+          title: "Project Milestone 3",
         })
       );
     });

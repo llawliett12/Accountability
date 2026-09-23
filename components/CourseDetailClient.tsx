@@ -40,6 +40,29 @@ const ASSESSMENT_TYPES: { value: AssessmentType; label: string }[] = [
   { value: "exam", label: "Exam" },
 ];
 
+// Server Actions and Server Components redact the real error message in
+// production builds (Next.js replaces it with the generic "Minified React
+// error #441 ... Server Components render" text, or a similar RSC-boundary
+// message with a `digest`). Showing that raw string to the user is
+// meaningless and looks like a client-side crash even when the modal itself
+// rendered fine. Detect that redacted shape and fall back to a plain,
+// actionable message instead, while still logging the digest (if present)
+// so it can be correlated with server-side logs.
+function friendlyErrorMessage(err: any, fallback: string): string {
+  const raw = typeof err?.message === "string" ? err.message : "";
+  const isRedacted =
+    !raw ||
+    /minified react error/i.test(raw) ||
+    /server components render/i.test(raw);
+  if (isRedacted) {
+    if (err?.digest) {
+      console.error(`${fallback} — server digest: ${err.digest}`);
+    }
+    return fallback;
+  }
+  return raw;
+}
+
 const PRIORITY_BADGES: Record<number, { label: string; class: string }> = {
   1: { label: "P1", class: "bg-rose-950/70 text-rose-300 border-rose-800/60" },
   2: { label: "P2", class: "bg-amber-950/70 text-amber-300 border-amber-800/60" },
@@ -87,7 +110,7 @@ function AddSlotModal({
       });
       onClose();
     } catch (err: any) {
-      setError(err?.message || "Failed to add slot");
+      setError(friendlyErrorMessage(err, "Failed to add slot"));
     } finally {
       setSubmitting(false);
     }
@@ -218,7 +241,7 @@ function AddExtraClassModal({
       });
       onClose();
     } catch (err: any) {
-      setError(err?.message || "Failed to schedule extra class");
+      setError(friendlyErrorMessage(err, "Failed to schedule extra class"));
     } finally {
       setSubmitting(false);
     }
@@ -345,7 +368,7 @@ function AddAssessmentModal({
       });
       onClose();
     } catch (err: any) {
-      setError(err?.message || "Failed to add academic event");
+      setError(friendlyErrorMessage(err, "Failed to add academic event"));
     } finally {
       setSubmitting(false);
     }
@@ -470,7 +493,7 @@ function AddDeadlineModal({
       });
       onClose();
     } catch (err: any) {
-      setError(err?.message || "Failed to add deadline");
+      setError(friendlyErrorMessage(err, "Failed to add deadline"));
     } finally {
       setSubmitting(false);
     }
@@ -581,7 +604,7 @@ function AddGoalModal({
       });
       onClose();
     } catch (err: any) {
-      setError(err?.message || "Failed to add goal");
+      setError(friendlyErrorMessage(err, "Failed to add goal"));
     } finally {
       setSubmitting(false);
     }
@@ -702,7 +725,7 @@ function AddTaskModal({
       });
       onClose();
     } catch (err: any) {
-      setError(err?.message || "Failed to add task");
+      setError(friendlyErrorMessage(err, "Failed to add task"));
     } finally {
       setSubmitting(false);
     }
@@ -838,6 +861,7 @@ export default function CourseDetailClient({ details }: { details: CourseDetailD
   const [syllabusNotes, setSyllabusNotes] = useState(course.syllabus_notes ?? "");
   const [nextExamNotes, setNextExamNotes] = useState(course.next_assessment_notes ?? "");
   const [notesSaved, setNotesSaved] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
 
   // Modal open states
   const [showAddSlot, setShowAddSlot] = useState(false);
@@ -849,6 +873,7 @@ export default function CourseDetailClient({ details }: { details: CourseDetailD
 
   // 1. NOTES
   const handleSaveNotes = () => {
+    setActionError(null);
     startTransition(async () => {
       try {
         await updateCourse(course.id, {
@@ -857,14 +882,16 @@ export default function CourseDetailClient({ details }: { details: CourseDetailD
         });
         setNotesSaved(true);
         setTimeout(() => setNotesSaved(false), 2500);
-      } catch (e) {
+      } catch (e: any) {
         console.error("Failed to save notes", e);
+        setActionError(friendlyErrorMessage(e, "Failed to save notes. Please try again."));
       }
     });
   };
 
   // 2. COURSE STATUS
   const handleToggleActive = () => {
+    setActionError(null);
     startTransition(async () => {
       try {
         if (course.active) {
@@ -872,8 +899,9 @@ export default function CourseDetailClient({ details }: { details: CourseDetailD
         } else {
           await activateCourse(course.id);
         }
-      } catch (e) {
+      } catch (e: any) {
         console.error("Failed to toggle course active status", e);
+        setActionError(friendlyErrorMessage(e, "Failed to update course status. Please try again."));
       }
     });
   };
@@ -1033,6 +1061,7 @@ export default function CourseDetailClient({ details }: { details: CourseDetailD
 
   const handleToggleDeadlineStatus = (id: string, current: string) => {
     const nextStatus = current === "completed" ? "pending" : "completed";
+    const prevList = deadlines;
     setDeadlines((prev) =>
       prev.map((d) => (d.id === id ? { ...d, status: nextStatus } : d))
     );
@@ -1041,6 +1070,7 @@ export default function CourseDetailClient({ details }: { details: CourseDetailD
         await updateDeadlineStatus(id, nextStatus);
       } catch (err) {
         console.error("Failed to toggle deadline status", err);
+        setDeadlines(prevList);
       }
     });
   };
@@ -1100,6 +1130,7 @@ export default function CourseDetailClient({ details }: { details: CourseDetailD
   };
 
   const handleUpdateGoalStatus = (goalId: string, nextStatus: GoalStatus) => {
+    const prevList = goals;
     setGoals((prev) =>
       prev.map((g) => (g.id === goalId ? { ...g, status: nextStatus } : g))
     );
@@ -1108,11 +1139,13 @@ export default function CourseDetailClient({ details }: { details: CourseDetailD
         await updateGoal(goalId, { status: nextStatus, course_id: course.id });
       } catch (err) {
         console.error("Failed to update goal status", err);
+        setGoals(prevList);
       }
     });
   };
 
   const handleUpdateGoalProgress = (goalId: string, progressValue: number | null) => {
+    const prevList = goals;
     setGoals((prev) =>
       prev.map((g) =>
         g.id === goalId
@@ -1134,6 +1167,7 @@ export default function CourseDetailClient({ details }: { details: CourseDetailD
         });
       } catch (err) {
         console.error("Failed to update goal progress", err);
+        setGoals(prevList);
       }
     });
   };
@@ -1212,6 +1246,7 @@ export default function CourseDetailClient({ details }: { details: CourseDetailD
 
   const handleToggleTask = (taskId: string, currentStatus: string) => {
     const nextStatus: TaskStatus = currentStatus === "completed" ? "not_started" : "completed";
+    const prevList = tasks;
     setTasks((prev) =>
       prev.map((t) => (t.id === taskId ? { ...t, status: nextStatus } : t))
     );
@@ -1220,6 +1255,7 @@ export default function CourseDetailClient({ details }: { details: CourseDetailD
         await updateTaskStatus(taskId, nextStatus);
       } catch (err) {
         console.error("Failed to toggle task", err);
+        setTasks(prevList);
       }
     });
   };
@@ -1294,6 +1330,9 @@ export default function CourseDetailClient({ details }: { details: CourseDetailD
           </h2>
           <div className="flex items-center gap-2">
             {notesSaved && <span className="font-mono text-[10px] text-emerald-400">✓ Saved</span>}
+            {actionError && (
+              <span className="font-mono text-[10px] text-red-400">{actionError}</span>
+            )}
             <button
               type="button"
               disabled={pending}

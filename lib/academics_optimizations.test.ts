@@ -21,6 +21,7 @@ const mockSupabase = {
     }),
     eq: vi.fn().mockReturnThis(),
     maybeSingle: vi.fn().mockResolvedValue({ data: { id: "class-slot-1", course_id: "course-cs330" }, error: null }),
+    limit: vi.fn().mockResolvedValue({ data: [{ id: "class-slot-1", course_id: "course-cs330" }], error: null }),
   })),
 };
 
