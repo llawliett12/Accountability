@@ -100,17 +100,21 @@ export async function fetchInsights(
     patterns.push(buildPattern("meditation", "mood", xs, ys));
   }
 
-  // Pause frequency vs focus session length (session-level, not daily)
-  const { xs: pauseXs, ys: durationYs } = await fetchSessionPauseVsDuration(
-    supabase,
-    userId,
-    startDate,
-    endDate
-  );
+  // Pause frequency vs focus session length, academic performance
+  // correlations, and morning/evening comparison are all independent reads
+  // (none depends on another's result) — parallelize instead of three
+  // sequential round-trips.
+  const [
+    { xs: pauseXs, ys: durationYs },
+    academic,
+    { morning, evening },
+  ] = await Promise.all([
+    fetchSessionPauseVsDuration(supabase, userId, startDate, endDate),
+    fetchAcademicPerformancePairs(supabase, userId, startDate, endDate),
+    fetchMorningEveningFocusMinutes(supabase, userId, startDate, endDate),
+  ]);
   patterns.push(buildPattern("pause count", "session length", pauseXs, durationYs));
 
-  // Class preparation vs assessment performance, and listening vs performance
-  const academic = await fetchAcademicPerformancePairs(supabase, userId, startDate, endDate);
   patterns.push(
     buildPattern("class preparation rate", "assessment score", academic.prepXs, academic.scoreYsForPrep)
   );
@@ -123,13 +127,6 @@ export async function fetchInsights(
     )
   );
 
-  // Morning vs evening focus time (group comparison, not correlation)
-  const { morning, evening } = await fetchMorningEveningFocusMinutes(
-    supabase,
-    userId,
-    startDate,
-    endDate
-  );
   const morningEveningComparison = buildGroupComparison("Morning", "Evening", morning, evening);
 
   return {
