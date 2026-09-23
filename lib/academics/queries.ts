@@ -76,8 +76,29 @@ export async function fetchClassById(
   userId: string,
   classId: string
 ): Promise<ClassWithAttendance | null> {
-  const all = await fetchClassesWithAttendance(userId);
-  return all.find((c) => c.id === classId) ?? null;
+  const supabase = await createClient();
+
+  const { data: cls, error } = await supabase
+    .from("classes")
+    .select("*")
+    .eq("user_id", userId)
+    .eq("id", classId)
+    .maybeSingle();
+  if (error) throw error;
+  if (!cls) return null;
+
+  const { data: occurrences } = await supabase
+    .from("class_occurrences")
+    .select("attendance_status")
+    .eq("class_id", classId);
+
+  return {
+    ...(cls as ClassDef),
+    attendance: computeAttendanceStats(
+      (occurrences ?? []) as { attendance_status: ClassOccurrence["attendance_status"] }[],
+      (cls as ClassDef).attendance_target
+    ),
+  };
 }
 
 export async function fetchOccurrencesForClass(
