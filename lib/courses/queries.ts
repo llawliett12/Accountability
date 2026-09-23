@@ -54,11 +54,12 @@ export async function fetchCourseDetails(
 ): Promise<CourseDetailData | null> {
   const supabase = await createClient();
 
-  const course = await fetchCourseById(userId, courseId);
-  if (!course) return null;
-
-  // Parallelize all course-related queries
+  // The course row and its children are all independently queryable by the
+  // already-known courseId — no need to wait for fetchCourseById to resolve
+  // before starting the rest. If the course turns out not to exist (or
+  // isn't this user's), we just discard the other results below.
   const [
+    course,
     { data: slotsData },
     { data: occurrencesData },
     { data: assessmentsData },
@@ -67,6 +68,8 @@ export async function fetchCourseDetails(
     { data: tasksData },
     { data: notesData },
   ] = await Promise.all([
+    fetchCourseById(userId, courseId),
+
     supabase
       .from("classes")
       .select("*")
@@ -118,6 +121,8 @@ export async function fetchCourseDetails(
       .eq("course_id", courseId)
       .order("created_at", { ascending: false }),
   ]);
+
+  if (!course) return null;
 
   const slots = (slotsData ?? []) as ClassDef[];
   const occurrences = (occurrencesData ?? []) as ClassOccurrence[];
