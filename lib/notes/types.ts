@@ -1,0 +1,9 @@
+export interface Note {
+  id: string;
+  user_id: string;
+  content: string;
+  course_id: string | null;
+  category: string;
+  created_at: string;
+  updated_at: string;
+}
