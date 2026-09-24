@@ -84,59 +84,62 @@ export default function WeeklyTimetableReference({
         </div>
       )}
 
-      {/* 2. TODAY'S SCHEDULED CLASSES (STRUCTURED CANONICAL DATA) */}
-      <div className="border-t border-neutral-800/80 pt-2.5">
-        <div className="flex items-center justify-between mb-1.5 font-mono text-xs uppercase tracking-wider text-neutral-400 font-semibold">
-          <span>Today&apos;s Classes (Structured Schedule)</span>
-          <span>{items.length} {items.length === 1 ? "class" : "classes"}</span>
-        </div>
-
-        {items.length === 0 ? (
-          <p className="font-mono text-sm text-neutral-500 py-1">No classes scheduled today.</p>
-        ) : (
-          <div className="divide-y divide-neutral-800/60 font-mono text-sm">
-            {items.map((item) => {
-              const isCancelled = item.status === "cancelled";
-              return (
-                <div
-                  key={item.id}
-                  className={`py-1.5 flex items-center justify-between gap-2 ${
-                    isCancelled ? "opacity-50 line-through" : ""
-                  }`}
-                >
-                  <div className="flex items-baseline gap-2.5 min-w-0">
-                    <span className="text-amber-300 font-bold whitespace-nowrap text-xs">
-                      {item.startTime.slice(0, 5)} &ndash; {item.endTime.slice(0, 5)}
-                    </span>
-                    <Link
-                      href={`/academics/courses/${item.courseId}`}
-                      className="font-bold text-neutral-100 hover:text-white transition-colors truncate"
-                    >
-                      {item.courseCode}
-                    </Link>
-                    <span className="text-xs text-neutral-400 capitalize truncate">
-                      {item.isExtra ? "Extra Class" : item.slotType}
-                    </span>
-                    {item.location && (
-                      <span className="text-xs text-neutral-500 hidden sm:inline truncate">
-                        ({item.location})
-                      </span>
-                    )}
-                  </div>
-
-                  <div className="text-right whitespace-nowrap text-xs">
-                    {item.status === "held" ? (
-                      <span className="text-emerald-400 font-medium">Held</span>
-                    ) : (
-                      <span className="text-neutral-400">{item.location ?? "Scheduled"}</span>
-                    )}
-                  </div>
-                </div>
-              );
-            })}
+      {/* 2. TODAY'S SCHEDULED CLASSES (STRUCTURED CANONICAL DATA) — only shown when there's
+          no uploaded timetable photo above; otherwise it's pure repetition of the same info. */}
+      {!imageUrl && (
+        <div className="border-t border-neutral-800/80 pt-2.5">
+          <div className="flex items-center justify-between mb-1.5 font-mono text-xs uppercase tracking-wider text-neutral-400 font-semibold">
+            <span>Today&apos;s Classes</span>
+            <span>{items.length} {items.length === 1 ? "class" : "classes"}</span>
           </div>
-        )}
-      </div>
+
+          {items.length === 0 ? (
+            <p className="font-mono text-sm text-neutral-500 py-1">No classes scheduled today.</p>
+          ) : (
+            <div className="divide-y divide-neutral-800/60 font-mono text-sm">
+              {items.map((item) => {
+                const isCancelled = item.status === "cancelled";
+                return (
+                  <div
+                    key={item.id}
+                    className={`py-1.5 flex items-center justify-between gap-2 ${
+                      isCancelled ? "opacity-50 line-through" : ""
+                    }`}
+                  >
+                    <div className="flex items-baseline gap-2.5 min-w-0">
+                      <span className="text-amber-300 font-bold whitespace-nowrap text-xs">
+                        {item.startTime.slice(0, 5)} &ndash; {item.endTime.slice(0, 5)}
+                      </span>
+                      <Link
+                        href={`/academics/courses/${item.courseId}`}
+                        className="font-bold text-neutral-100 hover:text-white transition-colors truncate"
+                      >
+                        {item.courseCode}
+                      </Link>
+                      <span className="text-xs text-neutral-400 capitalize truncate">
+                        {item.isExtra ? "Extra Class" : item.slotType}
+                      </span>
+                      {item.location && (
+                        <span className="text-xs text-neutral-500 hidden sm:inline truncate">
+                          ({item.location})
+                        </span>
+                      )}
+                    </div>
+
+                    <div className="text-right whitespace-nowrap text-xs">
+                      {item.status === "held" ? (
+                        <span className="text-emerald-400 font-medium">Held</span>
+                      ) : (
+                        <span className="text-neutral-400">{item.location ?? "Scheduled"}</span>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* LIGHTBOX FULL VIEW MODAL */}
       {showFullView && imageUrl && (

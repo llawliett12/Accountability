@@ -229,7 +229,6 @@ function AssessmentsSection({
           <h2 className="text-base font-semibold text-neutral-100">Assessments Sheet</h2>
           <p className="text-sm text-neutral-400">
             Inline editable scores with auto % calculation
-            <span className="sm:hidden text-amber-400/80 font-mono text-xs ml-1.5">↔ Swipe table</span>
           </p>
         </div>
         <button
@@ -310,132 +309,111 @@ function AssessmentsSection({
         </form>
       )}
 
-      {/* SPREADSHEET TABLE CONTAINER */}
-      <div className="border-y border-neutral-800 bg-neutral-950/50 overflow-x-auto">
-        <table className="w-full text-left text-sm text-neutral-300 border-collapse min-w-[540px]">
-          <thead>
-            <tr className="border-b border-neutral-800 bg-neutral-950/60 text-xs font-mono uppercase tracking-wider text-neutral-400">
-              <th className="py-2.5 px-3">Subject</th>
-              <th className="py-2.5 px-3">Test</th>
-              <th className="py-2.5 px-2">Date</th>
-              <th className="py-2.5 px-2">Score / Max</th>
-              <th className="py-2.5 px-2 text-right">%</th>
-              <th className="py-2.5 px-2 text-center w-10"></th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-neutral-800/60">
-            {assessments.map((a) => {
-              const hasScore = a.score !== null && a.max_score !== null && a.max_score > 0;
-              const pct = hasScore ? Math.round(((a.score as number) / (a.max_score as number)) * 100) : null;
-              const isSaving = savingId === a.id;
+      {/* VERTICAL ASSESSMENT CARDS — stacked rows of fields instead of a
+          horizontally-scrolling spreadsheet table */}
+      <div className="divide-y divide-neutral-800 border-y border-neutral-800 bg-neutral-950/50">
+        {assessments.map((a) => {
+          const hasScore = a.score !== null && a.max_score !== null && a.max_score > 0;
+          const pct = hasScore ? Math.round(((a.score as number) / (a.max_score as number)) * 100) : null;
+          const isSaving = savingId === a.id;
 
-              return (
-                <tr key={a.id} className="hover:bg-neutral-800/40 transition-colors">
-                  {/* Subject */}
-                  <td className="py-2 px-3">
-                    <span className="font-medium text-neutral-200 truncate max-w-[130px] block">
-                      {a.class_id ? classById.get(a.class_id) ?? "Subject" : "General"}
+          return (
+            <div key={a.id} className="p-3 space-y-2.5 hover:bg-neutral-800/30 transition-colors">
+              {/* Title row: type badge + title + actions */}
+              <div className="flex items-start justify-between gap-2">
+                <div className="flex items-center gap-1.5 min-w-0">
+                  <span
+                    className={`shrink-0 rounded px-1.5 py-0.2 text-[11px] font-semibold uppercase ${
+                      a.type === "exam" ? "bg-purple-950/80 text-purple-300" : "bg-blue-950/80 text-blue-300"
+                    }`}
+                  >
+                    {a.type}
+                  </span>
+                  <span className="font-medium text-neutral-100 truncate">{a.title}</span>
+                </div>
+                <div className="flex items-center gap-0.5 shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => handleEditAssessment(a)}
+                    title="Edit assessment"
+                    className="min-h-[36px] min-w-[32px] inline-flex items-center justify-center text-neutral-600 hover:text-amber-400 transition-colors"
+                  >
+                    ✎
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => { if (confirm(`Delete ${a.title}?`)) handleDelete(a.id); }}
+                    title="Delete assessment"
+                    aria-label={`Delete ${a.title}`}
+                    className="h-9 w-9 inline-flex items-center justify-center rounded text-neutral-500 hover:text-red-400 hover:bg-neutral-800 transition-colors"
+                  >
+                    <TrashIcon className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              </div>
+
+              {/* Subject + Date row */}
+              <div className="flex items-center justify-between text-xs font-mono text-neutral-400">
+                <span className="truncate">
+                  {a.class_id ? classById.get(a.class_id) ?? "Subject" : "General"}
+                </span>
+                <span className="whitespace-nowrap">{a.date}</span>
+              </div>
+
+              {/* Score / Max + Percentage row */}
+              <div className="flex items-center justify-between gap-2">
+                <label className="flex items-center gap-1 text-xs text-neutral-500">
+                  Score
+                  <input
+                    type="number"
+                    defaultValue={a.score ?? ""}
+                    placeholder="--"
+                    onBlur={(e) =>
+                      handleScoreChange(a.id, e.target.value, String(a.max_score ?? 100))
+                    }
+                    className="w-14 rounded bg-neutral-800/90 border border-neutral-700/60 px-1.5 py-1 font-mono text-center text-sm text-neutral-100 outline-none focus:border-amber-400"
+                  />
+                  <span className="text-neutral-500">/</span>
+                  <input
+                    type="number"
+                    defaultValue={a.max_score ?? ""}
+                    placeholder="100"
+                    onBlur={(e) =>
+                      handleScoreChange(a.id, String(a.score ?? ""), e.target.value)
+                    }
+                    className="w-14 rounded bg-neutral-800/90 border border-neutral-700/60 px-1.5 py-1 font-mono text-center text-sm text-neutral-100 outline-none focus:border-amber-400"
+                  />
+                </label>
+
+                <div className="font-mono font-semibold whitespace-nowrap">
+                  {isSaving ? (
+                    <span className="text-xs text-amber-400">saving...</span>
+                  ) : pct !== null ? (
+                    <span
+                      className={`rounded px-1.5 py-0.5 text-sm ${
+                        pct >= 75
+                          ? "bg-emerald-950/80 text-emerald-400"
+                          : pct >= 50
+                          ? "bg-amber-950/80 text-amber-400"
+                          : "bg-red-950/80 text-red-400"
+                      }`}
+                    >
+                      {pct}%
                     </span>
-                  </td>
+                  ) : (
+                    <span className="text-neutral-600 text-sm">--</span>
+                  )}
+                </div>
+              </div>
+            </div>
+          );
+        })}
 
-                  {/* Test Title & Type */}
-                  <td className="py-2 px-3">
-                    <div className="flex items-center gap-1.5">
-                      <span
-                        className={`rounded px-1.5 py-0.2 text-[11px] font-semibold uppercase ${
-                          a.type === "exam" ? "bg-purple-950/80 text-purple-300" : "bg-blue-950/80 text-blue-300"
-                        }`}
-                      >
-                        {a.type}
-                      </span>
-                      <span className="font-medium text-neutral-100 truncate max-w-[160px]">{a.title}</span>
-                    </div>
-                  </td>
-
-                  {/* Date */}
-                  <td className="py-2 px-2 font-mono text-xs text-neutral-400 whitespace-nowrap">
-                    {a.date}
-                  </td>
-
-                  {/* Inline Editable Score & Max */}
-                  <td className="py-2 px-2 whitespace-nowrap">
-                    <div className="flex items-center gap-1">
-                      <input
-                        type="number"
-                        defaultValue={a.score ?? ""}
-                        placeholder="--"
-                        onBlur={(e) =>
-                          handleScoreChange(a.id, e.target.value, String(a.max_score ?? 100))
-                        }
-                        className="w-12 rounded bg-neutral-800/90 border border-neutral-700/60 px-1.5 py-1 font-mono text-center text-sm text-neutral-100 outline-none focus:border-amber-400"
-                      />
-                      <span className="text-neutral-500">/</span>
-                      <input
-                        type="number"
-                        defaultValue={a.max_score ?? ""}
-                        placeholder="100"
-                        onBlur={(e) =>
-                          handleScoreChange(a.id, String(a.score ?? ""), e.target.value)
-                        }
-                        className="w-12 rounded bg-neutral-800/90 border border-neutral-700/60 px-1.5 py-1 font-mono text-center text-sm text-neutral-100 outline-none focus:border-amber-400"
-                      />
-                    </div>
-                  </td>
-
-                  {/* Auto-Calculated Percentage */}
-                  <td className="py-2 px-2 text-right font-mono font-semibold whitespace-nowrap">
-                    {isSaving ? (
-                      <span className="text-xs text-amber-400">...</span>
-                    ) : pct !== null ? (
-                      <span
-                        className={`rounded px-1.5 py-0.5 text-sm ${
-                          pct >= 75
-                            ? "bg-emerald-950/80 text-emerald-400"
-                            : pct >= 50
-                            ? "bg-amber-950/80 text-amber-400"
-                            : "bg-red-950/80 text-red-400"
-                        }`}
-                      >
-                        {pct}%
-                      </span>
-                    ) : (
-                      <span className="text-neutral-600">--</span>
-                    )}
-                  </td>
-
-                  {/* Delete row */}
-                  <td className="py-2 px-2 text-center">
-                    <button
-                      type="button"
-                      onClick={() => handleEditAssessment(a)}
-                      title="Edit assessment"
-                      className="min-h-[44px] min-w-[32px] inline-flex items-center justify-center -m-2 text-neutral-600 hover:text-amber-400 transition-colors"
-                    >
-                      ✎
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => { if (confirm(`Delete ${a.title}?`)) handleDelete(a.id); }}
-                      title="Delete assessment"
-                      aria-label={`Delete ${a.title}`}
-                      className="h-7 w-7 inline-flex items-center justify-center rounded text-neutral-500 hover:text-red-400 hover:bg-neutral-800 transition-colors"
-                    >
-                      <TrashIcon className="w-3.5 h-3.5" />
-                    </button>
-                  </td>
-                </tr>
-              );
-            })}
-
-            {assessments.length === 0 && (
-              <tr>
-                <td colSpan={6} className="py-8 text-center text-sm text-neutral-500">
-                  No assessments added yet. Click &ldquo;+ Add Assessment&rdquo; to start tracking tests.
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
+        {assessments.length === 0 && (
+          <p className="py-8 text-center text-sm text-neutral-500">
+            No assessments added yet. Click &ldquo;+ Add Assessment&rdquo; to start tracking tests.
+          </p>
+        )}
       </div>
     </div>
   );
