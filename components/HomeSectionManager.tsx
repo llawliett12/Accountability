@@ -32,6 +32,7 @@ interface HomeSectionManagerProps {
   isWeekday?: boolean;
   nextInLine: NextInLineResult | null;
   homeNotes?: Note[];
+  journalNotes?: Note[];
 }
 
 export default function HomeSectionManager({
@@ -47,6 +48,7 @@ export default function HomeSectionManager({
   isWeekday,
   nextInLine,
   homeNotes,
+  journalNotes,
 }: HomeSectionManagerProps) {
   const [activeSection, setActiveSection] = useState<HomeSection | null>(initialSection);
   const [prevInitial, setPrevInitial] = useState(initialSection);
@@ -165,10 +167,13 @@ export default function HomeSectionManager({
         {/* 4. TOP 3 GOALS */}
         <HomeTop3Goals goals={top3Goals} courseCodeMap={courseCodeMap} />
 
-        {/* 5. WHAT AM I DOING? QUICK JOURNAL */}
+        {/* 5. WHAT AM I DOING? QUICK ACTIVITY LOG */}
         <WhatAmIDoingInput />
 
-        {/* 6. GENERAL NOTES */}
+        {/* 6. JOURNAL */}
+        <NotesSection title="Journal" notes={journalNotes ?? []} category="journal" />
+
+        {/* 7. GENERAL NOTES */}
         <NotesSection title="Notes" notes={homeNotes ?? []} category="general" />
       </div>
 

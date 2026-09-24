@@ -173,7 +173,7 @@ describe("React Render Smoke & Crash Prevention Tests", () => {
         }}
         lastNightSleep={null}
         recentSleepLogs={[]}
-        todayFoodEntries={[]}
+        todayMeals={{ breakfast: false, lunch: false, dinner: false }}
         todayMeditation={null}
         meditationStreak={5}
         recentMeditationLogs={[]}

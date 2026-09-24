@@ -3,10 +3,10 @@
 import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import SectionBlock from "@/components/SectionBlock";
-import FoodLogTable from "@/components/FoodLogTable";
+import FoodHabitLedger from "@/components/FoodHabitLedger";
 import MeditationQuickLog from "@/components/MeditationQuickLog";
 import SleepLogForm from "@/components/SleepLogForm";
-import type { FoodEntry, SleepLogRecord, MeditationLogRecord } from "@/lib/health/types";
+import type { SleepLogRecord, MeditationLogRecord } from "@/lib/health/types";
 import type { ScreenTimeDay } from "@/lib/screen-time/queries";
 import NotesSection from "@/components/NotesSection";
 import type { Note } from "@/lib/notes/types";
@@ -39,7 +39,7 @@ interface HealthSectionManagerProps {
   lastNightSleep: SleepLogRecord | null;
   recentSleepLogs: SleepLogRecord[];
   // Food data
-  todayFoodEntries: FoodEntry[];
+  todayMeals: { breakfast: boolean; lunch: boolean; dinner: boolean };
   // Meditation data
   todayMeditation: MeditationLogRecord | null;
   meditationStreak: number;
@@ -59,7 +59,7 @@ export default function HealthSectionManager({
   averages,
   lastNightSleep,
   recentSleepLogs,
-  todayFoodEntries,
+  todayMeals,
   todayMeditation,
   meditationStreak,
   recentMeditationLogs,
@@ -104,6 +104,7 @@ export default function HealthSectionManager({
   const todayScreenHours = todayScreenTime
     ? (todayScreenTime.totalMinutes / 60).toFixed(1)
     : null;
+  const todayMealsCount = [todayMeals.breakfast, todayMeals.lunch, todayMeals.dinner].filter(Boolean).length;
 
   return (
     <>
@@ -166,7 +167,7 @@ export default function HealthSectionManager({
                   <span className="text-xs font-normal text-neutral-500 ml-1">meals/d</span>
                 </div>
                 <div className="text-xs text-neutral-500">
-                  Today: <strong className="text-neutral-300">{todayFoodEntries.length} logged</strong>
+                  Today: <strong className="text-neutral-300">{todayMealsCount}/3 logged</strong>
                 </div>
               </div>
             </div>
@@ -190,11 +191,11 @@ export default function HealthSectionManager({
               onClick={() => selectSection("food")}
               title="Food"
               summary={
-                todayFoodEntries.length
-                  ? `${todayFoodEntries.length} meals/snacks logged today · 7d avg: ${averages.foodAvg7d} meals/d`
-                  : `No food logged today · 7d avg: ${averages.foodAvg7d} meals/d`
+                todayMealsCount > 0
+                  ? `${todayMealsCount}/3 meals marked today · 7d avg: ${averages.foodAvg7d} meals/d`
+                  : `No meals marked today · 7d avg: ${averages.foodAvg7d} meals/d`
               }
-              tone={todayFoodEntries.length ? "active" : "neutral"}
+              tone={todayMealsCount > 0 ? "active" : "neutral"}
             />
             <SectionBlock
               href="/health?section=meditation"
@@ -338,7 +339,7 @@ export default function HealthSectionManager({
           >
             ← Back to Health
           </Link>
-          <FoodLogTable date={today} initialEntries={todayFoodEntries} />
+          <FoodHabitLedger date={today} initialMeals={todayMeals} />
         </section>
       )}
 

@@ -44,6 +44,7 @@ export default async function MorningDashboard(props: {
     checkInsRes,
     timetableScreenshotRes,
     homeNotes,
+    journalNotes,
   ] = await Promise.all([
     supabase
       .from("daily_plans")
@@ -110,6 +111,7 @@ export default async function MorningDashboard(props: {
       .maybeSingle(),
 
     fetchNotes(userId, { category: "general" }),
+    fetchNotes(userId, { category: "journal" }),
   ]);
 
   const weeklyTimetableImageUrl = timetableScreenshotRes?.data?.storage_path
@@ -262,6 +264,7 @@ export default async function MorningDashboard(props: {
       isWeekday={isWeekday}
       nextInLine={nextInLine}
       homeNotes={homeNotes}
+      journalNotes={journalNotes}
     />
   );
 }

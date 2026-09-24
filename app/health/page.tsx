@@ -6,7 +6,7 @@ import HealthSectionManager, {
 } from "@/components/HealthSectionManager";
 import { fetchScreenTimeHistory } from "@/lib/screen-time/queries";
 import { fetchNotes } from "@/lib/notes/queries";
-import type { SleepLogRecord, MeditationLogRecord, FoodEntry } from "@/lib/health/types";
+import type { SleepLogRecord, MeditationLogRecord } from "@/lib/health/types";
 
 export default async function HealthPage(props: {
   searchParams?: Promise<{ section?: string }>;
@@ -53,15 +53,19 @@ export default async function HealthPage(props: {
     .lte("date", today)
     .order("date", { ascending: false });
 
-  const foodByDate = new Map<string, FoodEntry[]>();
-  let totalFoodEntries7d = 0;
+  const mealsByDate = new Map<string, { breakfast: boolean; lunch: boolean; dinner: boolean }>();
+  let totalMealsMarked7d = 0;
   for (const row of foodRows ?? []) {
-    const entries = ((row.entries as unknown[]) ?? []) as FoodEntry[];
-    foodByDate.set(row.date, entries);
-    totalFoodEntries7d += entries.length;
+    const meals = {
+      breakfast: Boolean(row.breakfast),
+      lunch: Boolean(row.lunch),
+      dinner: Boolean(row.dinner),
+    };
+    mealsByDate.set(row.date, meals);
+    totalMealsMarked7d += [meals.breakfast, meals.lunch, meals.dinner].filter(Boolean).length;
   }
-  const todayFoodEntries = foodByDate.get(today) ?? [];
-  const foodAvg7d = totalFoodEntries7d / 7;
+  const todayMeals = mealsByDate.get(today) ?? { breakfast: false, lunch: false, dinner: false };
+  const foodAvg7d = totalMealsMarked7d / 7;
 
   // 3. Fetch meditation logs (last 30 days)
   const { data: medRows } = await supabase
@@ -131,14 +135,14 @@ export default async function HealthPage(props: {
   for (let i = 0; i < 7; i++) {
     const d = shiftDateISO(today, -i);
     const sLog = sleepByDate.get(d);
-    const fEntries = foodByDate.get(d) ?? [];
+    const dMeals = mealsByDate.get(d);
     const mLog = medByDate.get(d);
     const stRecord = screenByDate.get(d);
 
     sevenDayTrends.push({
       date: d,
       sleepHours: sLog ? sLog.total_minutes / 60 : null,
-      foodCount: fEntries.length,
+      foodCount: dMeals ? [dMeals.breakfast, dMeals.lunch, dMeals.dinner].filter(Boolean).length : 0,
       meditationMinutes: mLog?.happened ? mLog.duration_min ?? 15 : mLog ? 0 : null,
       screenTimeHours: stRecord ? stRecord.totalMinutes / 60 : null,
     });
@@ -159,7 +163,7 @@ export default async function HealthPage(props: {
         lastNightSleep={lastNightSleep}
         averages={averages}
         recentSleepLogs={recentSleepLogs}
-        todayFoodEntries={todayFoodEntries}
+        todayMeals={todayMeals}
         todayMeditation={todayMeditation}
         meditationStreak={streak}
         recentMeditationLogs={recentMeditationLogs.slice(0, 7)}
