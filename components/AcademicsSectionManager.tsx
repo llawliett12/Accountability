@@ -167,7 +167,6 @@ export default function AcademicsSectionManager({
                         <span className="font-bold text-amber-300 group-hover:text-amber-200 transition-colors">
                           {crs.code}
                         </span>
-                        <span className="text-neutral-300 truncate text-xs">{crs.name}</span>
                       </div>
                       {crs.nextEvent && (
                         <span className="text-xs text-neutral-500 block truncate mt-0.5">

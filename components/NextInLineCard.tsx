@@ -85,9 +85,6 @@ export default function NextInLineCard({ item }: { item: NextInLineResult | null
                 <span className="rounded bg-neutral-800 border border-neutral-700 px-1.5 py-0.5 font-bold text-amber-300">
                   {item.courseCode}
                 </span>
-                <span className="text-neutral-400 truncate max-w-[200px] sm:max-w-none">
-                  {item.courseName}
-                </span>
               </div>
 
               <span className="text-neutral-600">·</span>

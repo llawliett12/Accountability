@@ -26,9 +26,9 @@ export default async function CourseDetailPage(props: {
       <header className="flex items-center justify-between border-b border-neutral-800/80 pb-3">
         <div>
           <div className="flex items-center gap-2">
-            <span className="font-mono text-sm font-bold text-amber-300">
+            <h1 className="font-mono text-xl font-bold tracking-tight text-amber-300">
               {details.course.code}
-            </span>
+            </h1>
             <span className={`text-xs font-mono px-1.5 py-0.5 rounded border ${
               details.course.active
                 ? "bg-emerald-950/60 border-emerald-800/60 text-emerald-400"
@@ -37,9 +37,6 @@ export default async function CourseDetailPage(props: {
               {details.course.active ? "Active" : "Archived"}
             </span>
           </div>
-          <h1 className="text-xl font-bold tracking-tight text-neutral-100 mt-0.5">
-            {details.course.name}
-          </h1>
           {(details.course.instructor || details.course.location) && (
             <p className="text-sm text-neutral-400 font-mono mt-0.5">
               {details.course.instructor ? `Prof. ${details.course.instructor}` : ""}

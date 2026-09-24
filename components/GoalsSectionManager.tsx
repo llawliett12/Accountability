@@ -261,7 +261,7 @@ export default function GoalsSectionManager({
               <option value="">No Course (Global)</option>
               {courses.map((c) => (
                 <option key={c.id} value={c.id}>
-                  {c.code} · {c.name}
+                  {c.code}
                 </option>
               ))}
             </select>

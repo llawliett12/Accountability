@@ -365,7 +365,6 @@ export default function CanonicalTimetable({
             {dayClasses.map((c) => {
               const course = c.course_id ? courseMap.get(c.course_id) : undefined;
               const courseCode = course?.code ?? c.name;
-              const courseName = course?.name ?? c.subject ?? c.name;
 
               return (
                 <div
@@ -381,9 +380,6 @@ export default function CanonicalTimetable({
                       <div className="flex items-center gap-1.5">
                         <span className="rounded bg-neutral-800 border border-neutral-700 px-1.5 py-0.2 text-xs font-bold text-neutral-200">
                           {courseCode}
-                        </span>
-                        <span className="font-medium text-neutral-100 truncate text-sm">
-                          {courseName}
                         </span>
                       </div>
 
@@ -472,7 +468,7 @@ export default function CanonicalTimetable({
                     <option value="">-- Select from my courses --</option>
                     {activeCourses.map((crs) => (
                       <option key={crs.id} value={crs.id}>
-                        {crs.code} &ndash; {crs.name}
+                        {crs.code}
                       </option>
                     ))}
                   </select>
@@ -616,7 +612,7 @@ export default function CanonicalTimetable({
                   <option value="">-- Select Course --</option>
                   {activeCourses.map((crs) => (
                     <option key={crs.id} value={crs.id}>
-                      {crs.code} &ndash; {crs.name}
+                      {crs.code}
                     </option>
                   ))}
                 </select>

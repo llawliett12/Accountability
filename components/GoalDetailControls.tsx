@@ -152,7 +152,7 @@ export default function GoalDetailControls({
             <option value="">None (Personal)</option>
             {courseOptions.map((c) => (
               <option key={c.id} value={c.id}>
-                {c.code} · {c.name}
+                {c.code}
               </option>
             ))}
           </select>
