@@ -211,4 +211,82 @@ describe("Next in Line logic", () => {
     expect(result?.kind).toBe("goal");
     expect(result?.id).toBe("g1");
   });
+
+  describe("with Tasks", () => {
+    const soonExam: AcademicCandidateEvent = {
+      id: "e-exam",
+      course_id: "c1",
+      title: "Midterm",
+      date: "2026-09-24",
+      time: null,
+      type: "exam",
+      status: "upcoming",
+    };
+    const task = (id: string, priority: number, deadline: string | null = null, status = "not_started") => ({
+      id,
+      title: `Task ${id}`,
+      priority,
+      status,
+      deadline,
+    });
+
+    it("keeps the academic event when the task is not due sooner", () => {
+      const res = resolveHomeNextInLine([soonExam], courses, [], today, 7, [
+        task("t1", 1),
+        task("t2", 2, "2026-09-25T10:00:00Z"),
+      ]);
+      expect(res?.kind).toBe("academic");
+    });
+
+    it("lets a task due before the academic event win the slot", () => {
+      const res = resolveHomeNextInLine([soonExam], courses, [], today, 7, [
+        task("t1", 3, "2026-09-22T18:00:00Z"),
+      ]);
+      expect(res).toMatchObject({ kind: "task", id: "t1", dueDate: "2026-09-22" });
+    });
+
+    it("lets an overdue task win over a near academic event", () => {
+      const res = resolveHomeNextInLine([soonExam], courses, [], today, 7, [
+        task("late", 4, "2026-09-18T00:00:00Z"),
+      ]);
+      expect(res).toMatchObject({ kind: "task", id: "late" });
+    });
+
+    it("ignores finished tasks", () => {
+      const res = resolveHomeNextInLine([soonExam], courses, [], today, 7, [
+        task("done", 1, "2026-09-21T00:00:00Z", "completed"),
+      ]);
+      expect(res?.kind).toBe("academic");
+    });
+
+    it("with no near academic event, the top open task beats an undated goal", () => {
+      const goals: GoalCandidate[] = [
+        { id: "g1", title: "Goal", priority: 1, status: "in_progress", due_date: null },
+      ];
+      const res = resolveHomeNextInLine([], courses, goals, today, 7, [
+        task("p3", 3),
+        task("p2", 2),
+      ]);
+      expect(res).toMatchObject({ kind: "task", id: "p2", href: "/?date=2026-09-20&section=tasks" });
+    });
+
+    it("a goal due sooner than any dated task still wins", () => {
+      const goals: GoalCandidate[] = [
+        { id: "g1", title: "Goal", priority: 3, status: "in_progress", due_date: "2026-09-21" },
+      ];
+      const res = resolveHomeNextInLine([], courses, goals, today, 7, [
+        task("t1", 1, "2026-09-25T00:00:00Z"),
+        task("t2", 1),
+      ]);
+      expect(res).toMatchObject({ kind: "goal", id: "g1" });
+    });
+
+    it("falls back to goals when there are no open tasks", () => {
+      const goals: GoalCandidate[] = [
+        { id: "g1", title: "Goal", priority: 2, status: "not_started", due_date: null },
+      ];
+      const res = resolveHomeNextInLine([], courses, goals, today, 7, [task("x", 1, null, "completed")]);
+      expect(res).toMatchObject({ kind: "goal", id: "g1" });
+    });
+  });
 });

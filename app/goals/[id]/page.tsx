@@ -181,10 +181,10 @@ export default async function GoalDetailPage({
           <div className="p-4 text-center">
             <p className="text-sm text-neutral-400">No daily tasks linked yet.</p>
             <Link
-              href="/plan"
+              href="/"
               className="mt-2 inline-flex items-center text-sm font-medium text-white underline underline-offset-4"
             >
-              Go to Plan to link tasks →
+              Go to Home to link tasks →
             </Link>
           </div>
         ) : (

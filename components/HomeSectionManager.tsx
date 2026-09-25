@@ -4,29 +4,35 @@ import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import { formatDateDisplay, shiftDateISO } from "@/lib/date";
 import type { Task } from "@/lib/types";
-import type { Goal } from "@/lib/goals/types";
-import TaskSpreadsheet from "@/components/TaskSpreadsheet";
-import ActivityLedger, { type ActivityEntry } from "@/components/ActivityLedger";
+import TaskSpreadsheet, { type LinkableGoal } from "@/components/TaskSpreadsheet";
 import PlanDayGesture from "@/components/PlanDayGesture";
 import NextInLineCard from "@/components/NextInLineCard";
 import WeeklyTimetableReference from "@/components/WeeklyTimetableReference";
 import type { AcademicScheduleItem } from "@/components/TodayAcademicSchedule";
-import HomeTop3Goals from "@/components/HomeTop3Goals";
-import WhatAmIDoingInput from "@/components/WhatAmIDoingInput";
+import HomeTopTasks from "@/components/HomeTopTasks";
+import RightNow from "@/components/RightNow";
 import NotesSection from "@/components/NotesSection";
 import type { Note } from "@/lib/notes/types";
 import type { NextInLineResult } from "@/lib/nextInLine";
+import type { ActiveFocusSession } from "@/lib/focus";
 
-export type HomeSection = "priorities" | "current-work" | string;
+// Home has one deep view: the full Tasks ledger. (Focus Sessions live at /focus.)
+export type HomeSection = "tasks";
+
+// "priorities" is the old name for this view; keep old links working.
+function normalizeSection(value: string | null | undefined): HomeSection | null {
+  return value === "tasks" || value === "priorities" ? "tasks" : null;
+}
 
 interface HomeSectionManagerProps {
   date: string;
   today: string;
-  initialSection?: HomeSection | null;
+  initialSection?: string | null;
   tasks: Task[];
-  top3Goals: Goal[];
+  /** Every active goal, so any task can be linked to any goal. */
+  linkableGoals?: LinkableGoal[];
   courseCodeMap: Record<string, string>;
-  checkIns: ActivityEntry[];
+  activeSession?: ActiveFocusSession | null;
   academicSchedule: AcademicScheduleItem[];
   weeklyTimetableImageUrl?: string | null;
   isWeekday?: boolean;
@@ -40,9 +46,9 @@ export default function HomeSectionManager({
   today,
   initialSection = null,
   tasks,
-  top3Goals,
+  linkableGoals = [],
   courseCodeMap,
-  checkIns,
+  activeSession = null,
   academicSchedule,
   weeklyTimetableImageUrl,
   isWeekday,
@@ -50,11 +56,13 @@ export default function HomeSectionManager({
   homeNotes,
   journalNotes,
 }: HomeSectionManagerProps) {
-  const [activeSection, setActiveSection] = useState<HomeSection | null>(initialSection);
+  const [activeSection, setActiveSection] = useState<HomeSection | null>(
+    normalizeSection(initialSection)
+  );
   const [prevInitial, setPrevInitial] = useState(initialSection);
   if (prevInitial !== initialSection) {
     setPrevInitial(initialSection);
-    setActiveSection(initialSection);
+    setActiveSection(normalizeSection(initialSection));
   }
 
   const isWeekdayActive =
@@ -69,8 +77,7 @@ export default function HomeSectionManager({
   useEffect(() => {
     const handlePopState = () => {
       const params = new URLSearchParams(window.location.search);
-      const sectionParam = params.get("section") as HomeSection | null;
-      setActiveSection(sectionParam ?? null);
+      setActiveSection(normalizeSection(params.get("section")));
     };
 
     window.addEventListener("popstate", handlePopState);
@@ -78,14 +85,16 @@ export default function HomeSectionManager({
   }, []);
 
 
+  const openTasks = useCallback(() => {
+    setActiveSection("tasks");
+    window.history.pushState(null, "", `/?date=${date}&section=tasks`);
+  }, [date]);
+
   const handleBack = useCallback(() => {
     setActiveSection(null);
     const targetUrl = `/?date=${date}`;
     window.history.pushState(null, "", targetUrl);
   }, [date]);
-
-
-  const ongoingWork = checkIns.find((c) => c.status === "ongoing" || c.status === "paused");
 
   return (
     <>
@@ -131,32 +140,13 @@ export default function HomeSectionManager({
           </div>
         </header>
 
-        {/* ACTIVE WORK NOTIFICATION (if work session is running) */}
-        {ongoingWork && (
-          <div className="rounded-xl border border-emerald-800/60 bg-emerald-950/30 p-2.5 flex items-center justify-between text-sm">
-            <div className="flex items-center gap-2 truncate">
-              <span className="relative flex h-2 w-2">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
-              </span>
-              <span className="font-mono text-emerald-300 font-medium truncate">
-                {ongoingWork.status === "paused" ? "⏸ Paused: " : "● Ongoing: "}
-                {ongoingWork.actual_activity}
-              </span>
-            </div>
-            <Link
-              href="/now"
-              className="font-mono text-xs text-emerald-400 hover:text-emerald-200 underline whitespace-nowrap ml-2"
-            >
-              Focus Session &rarr;
-            </Link>
-          </div>
-        )}
+        {/* RIGHT NOW: the one place for "what am I doing?" (a Focus Session) */}
+        <RightNow active={activeSession} />
 
-        {/* 2. LARGE NEXT IN LINE */}
+        {/* NEXT IN LINE */}
         <NextInLineCard item={nextInLine} />
 
-        {/* 3. WEEKLY TIMETABLE REFERENCE (SHOWN MON-FRI ONLY; HIDDEN ON SAT-SUN) */}
+        {/* WEEKLY TIMETABLE REFERENCE (SHOWN MON-FRI ONLY; HIDDEN ON SAT-SUN) */}
         {isWeekdayActive && (
           <WeeklyTimetableReference
             imageUrl={weeklyTimetableImageUrl ?? null}
@@ -164,21 +154,23 @@ export default function HomeSectionManager({
           />
         )}
 
-        {/* 4. TOP 3 GOALS */}
-        <HomeTop3Goals goals={top3Goals} courseCodeMap={courseCodeMap} />
+        {/* TOP PRIORITIES: today's top open tasks */}
+        <HomeTopTasks
+          tasks={tasks}
+          date={date}
+          courseCodeMap={courseCodeMap}
+          onOpenTasks={openTasks}
+        />
 
-        {/* 5. WHAT AM I DOING? QUICK ACTIVITY LOG */}
-        <WhatAmIDoingInput />
-
-        {/* 6. JOURNAL */}
+        {/* JOURNAL */}
         <NotesSection title="Journal" notes={journalNotes ?? []} category="journal" />
 
-        {/* 7. GENERAL NOTES */}
+        {/* GENERAL NOTES */}
         <NotesSection title="Notes" notes={homeNotes ?? []} category="general" />
       </div>
 
-      {/* LEVEL 2: DEEP DEDICATED VIEWS */}
-      {activeSection === "priorities" && (
+      {/* LEVEL 2: FULL TASKS LEDGER */}
+      {activeSection === "tasks" && (
         <div className="space-y-4">
           <div className="flex items-center justify-between border-b border-neutral-800/80 pb-2">
             <button
@@ -189,46 +181,17 @@ export default function HomeSectionManager({
               &larr; Back to Home
             </button>
             <span className="font-mono text-sm font-semibold uppercase tracking-wider text-neutral-300">
-              Tasks &amp; Priorities
+              Tasks
             </span>
           </div>
 
           <PlanDayGesture date={date}>
             <TaskSpreadsheet
               initialTasks={tasks}
-              goals={top3Goals.map((g) => ({ id: g.id, title: g.title, level: g.level }))}
+              goals={linkableGoals}
               selectedDate={date}
             />
           </PlanDayGesture>
-        </div>
-      )}
-
-      {activeSection === "current-work" && (
-        <div className="space-y-4">
-          <div className="flex items-center justify-between border-b border-neutral-800/80 pb-2">
-            <button
-              type="button"
-              onClick={handleBack}
-              className="inline-flex items-center gap-1.5 font-mono text-sm text-neutral-400 hover:text-white transition-colors"
-            >
-              &larr; Back to Home
-            </button>
-            <span className="font-mono text-sm font-semibold uppercase tracking-wider text-neutral-300">
-              Current Work Sessions
-            </span>
-          </div>
-
-          <div className="flex items-center justify-between">
-            <p className="text-sm text-neutral-400 font-mono">Work sessions with ongoing/paused/completed lifecycle</p>
-            <Link
-              href="/now"
-              className="rounded-lg bg-neutral-100 px-3 py-1 font-mono text-sm font-semibold text-neutral-950 hover:bg-neutral-200 transition-colors"
-            >
-              Open Full Screen &rarr;
-            </Link>
-          </div>
-
-          <ActivityLedger initialEntries={checkIns} />
         </div>
       )}
     </>

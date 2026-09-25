@@ -24,25 +24,63 @@ const PAUSE_REASONS: PauseReason[] = [
 
 type TimerState = "idle" | "running" | "paused" | "stopped";
 
+type TimerPause = { id: string; started_at: Date; ended_at: Date | null };
+
+// A session already running on the server (e.g. started from Home) — the timer
+// picks it up instead of pretending nothing is running.
+export interface InitialFocusSession {
+  id: string;
+  label: string | null;
+  started_at: string;
+  pauses: { id: string; started_at: string; ended_at: string | null }[];
+}
+
+function focusedSeconds(startedAt: Date, pauses: TimerPause[], now: number): number {
+  const totalElapsed = (now - startedAt.getTime()) / 1000;
+  const pausedSec = pauses.reduce((sum, p) => {
+    const pEnd = p.ended_at ? p.ended_at.getTime() : now;
+    return sum + Math.max(0, (pEnd - p.started_at.getTime()) / 1000);
+  }, 0);
+  return Math.max(0, Math.round(totalElapsed - pausedSec));
+}
+
 // Elapsed time is always derived from stored timestamps, never from a naive
 // incrementing counter — this is what makes it survive the tab being
 // backgrounded/killed on Android.
 export default function FocusTimer({
   taskId,
   assessmentId,
-  label,
+  heading,
+  initialSession = null,
 }: {
   taskId?: string;
   assessmentId?: string;
-  label?: string;
+  heading?: string;
+  initialSession?: InitialFocusSession | null;
 } = {}) {
-  const [state, setState] = useState<TimerState>("idle");
-  const [sessionId, setSessionId] = useState<string | null>(null);
-  const [startedAt, setStartedAt] = useState<Date | null>(null);
-  const [pauses, setPauses] = useState<
-    { id: string; started_at: Date; ended_at: Date | null }[]
-  >([]);
-  const [activePauseId, setActivePauseId] = useState<string | null>(null);
+  const [state, setState] = useState<TimerState>(() =>
+    !initialSession
+      ? "idle"
+      : initialSession.pauses.some((p) => !p.ended_at)
+        ? "paused"
+        : "running"
+  );
+  const [sessionId, setSessionId] = useState<string | null>(initialSession?.id ?? null);
+  const [startedAt, setStartedAt] = useState<Date | null>(() =>
+    initialSession ? new Date(initialSession.started_at) : null
+  );
+  const [pauses, setPauses] = useState<TimerPause[]>(() =>
+    (initialSession?.pauses ?? []).map((p) => ({
+      id: p.id,
+      started_at: new Date(p.started_at),
+      ended_at: p.ended_at ? new Date(p.ended_at) : null,
+    }))
+  );
+  const [activePauseId, setActivePauseId] = useState<string | null>(
+    () => initialSession?.pauses.find((p) => !p.ended_at)?.id ?? null
+  );
+  const [activeLabel, setActiveLabel] = useState<string | null>(initialSession?.label ?? null);
+  const [labelInput, setLabelInput] = useState("");
   const [showReasonPicker, setShowReasonPicker] = useState(false);
   const [displaySec, setDisplaySec] = useState(0);
   const [lastFocusedSec, setLastFocusedSec] = useState<number | null>(null);
@@ -56,17 +94,12 @@ export default function FocusTimer({
       if (tickRef.current) clearInterval(tickRef.current);
       return;
     }
-    tickRef.current = setInterval(() => {
+    const update = () => {
       if (!startedAt) return;
-      const now = Date.now();
-      const totalElapsed = (now - startedAt.getTime()) / 1000;
-      const pausedSec = pauses.reduce((sum, p) => {
-        const pStart = p.started_at.getTime();
-        const pEnd = p.ended_at ? p.ended_at.getTime() : now;
-        return sum + Math.max(0, (pEnd - pStart) / 1000);
-      }, 0);
-      setDisplaySec(Math.max(0, Math.round(totalElapsed - pausedSec)));
-    }, 1000);
+      setDisplaySec(focusedSeconds(startedAt, pauses, Date.now()));
+    };
+    update(); // show the right time immediately (matters when picking up a running session)
+    tickRef.current = setInterval(update, 1000);
     return () => {
       if (tickRef.current) clearInterval(tickRef.current);
     };
@@ -81,16 +114,19 @@ export default function FocusTimer({
     // the create call succeeds now or gets queued for offline replay — a
     // pause taken a second later can reference it either way.
     const id = newClientId();
+    const sessionLabel = !taskId && !assessmentId ? labelInput.trim() : "";
     setSessionId(id);
     setStartedAt(new Date());
     setPauses([]);
     setDisplaySec(0);
+    setActiveLabel(sessionLabel || null);
+    setLabelInput("");
     setState("running");
     try {
       const result = await runOrQueue(
         "focus_session_start",
-        { taskId, assessmentId },
-        () => startFocusSession(taskId, assessmentId, id),
+        { taskId, assessmentId, label: sessionLabel || undefined },
+        () => startFocusSession(taskId, assessmentId, id, sessionLabel || undefined),
         id
       );
       if (result.status === "error") {
@@ -154,6 +190,7 @@ export default function FocusTimer({
       setState("stopped");
       setSessionId(null);
       setStartedAt(null);
+      setActiveLabel(null);
     } catch {
       // Deliberately NOT queued: the server computes focused-time from the
       // full session + pause history, which may itself still be offline-
@@ -177,18 +214,37 @@ export default function FocusTimer({
 
   return (
     <div className="rounded-2xl bg-neutral-900 p-4">
-      <h2 className="mb-3 text-sm font-medium text-neutral-400">{label ?? "Focus timer"}</h2>
+      <h2 className="mb-3 text-sm font-medium text-neutral-400">{heading ?? "Focus session"}</h2>
+
+      {activeLabel && (state === "running" || state === "paused") && (
+        <p className="mb-2 text-center text-sm text-neutral-300">{activeLabel}</p>
+      )}
 
       <p className="mb-4 text-center text-4xl font-mono">{format(displaySec)}</p>
 
       {state === "idle" || state === "stopped" ? (
-        <button
-          onClick={handleStart}
-          disabled={isStarting}
-          className="w-full rounded-lg bg-white py-3 font-medium text-neutral-950"
-        >
-          Start focus session
-        </button>
+        <div className="space-y-2">
+          {!taskId && !assessmentId && (
+            <input
+              type="text"
+              value={labelInput}
+              onChange={(e) => setLabelInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") void handleStart();
+              }}
+              placeholder="What are you working on? (optional)"
+              aria-label="What are you working on?"
+              className="w-full rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm text-neutral-100 placeholder-neutral-500 focus:border-neutral-600 focus:outline-none"
+            />
+          )}
+          <button
+            onClick={handleStart}
+            disabled={isStarting}
+            className="w-full rounded-lg bg-white py-3 font-medium text-neutral-950"
+          >
+            Start focus session
+          </button>
+        </div>
       ) : (
         <div className="flex gap-2">
           {state === "running" ? (

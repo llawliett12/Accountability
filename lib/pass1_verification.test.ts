@@ -146,8 +146,7 @@ describe("Pass 1 Correctness Fix 2: Task Creation Return and Flow", () => {
       user_id: "test-user-123",
       daily_plan_id: "plan-today",
       title: "Write QA verification tests",
-      priority: 3,
-      is_top3: true,
+      priority: 1,
       goal_id: null,
       status: "not_started",
     };
@@ -172,17 +171,16 @@ describe("Pass 1 Correctness Fix 2: Task Creation Return and Flow", () => {
 
     const result = await createTask({
       title: "Write QA verification tests",
-      is_top3: true,
+      priority: 1,
     });
 
     expect(result).toEqual(createdTask);
-    expect(revalidatePath).toHaveBeenCalledWith("/plan");
     expect(revalidatePath).toHaveBeenCalledWith("/");
   });
 
   it("restores input state and sets error if optimistic task creation fails", async () => {
     let currentTitle = "Finish physics assignment";
-    let currentTop3 = true;
+    let currentPriority = 1;
     let currentGoalId = "goal-1";
     let errorMessage: string | null = null;
 
@@ -190,24 +188,24 @@ describe("Pass 1 Correctness Fix 2: Task Creation Return and Flow", () => {
 
     const submit = async () => {
       const savedTitle = currentTitle;
-      const savedTop3 = currentTop3;
+      const savedPriority = currentPriority;
       const savedGoalId = currentGoalId;
 
       // Optimistically clear input
       currentTitle = "";
-      currentTop3 = false;
+      currentPriority = 3;
       currentGoalId = "";
 
       try {
         await onOptimisticCreate({
           title: savedTitle,
-          is_top3: savedTop3,
+          priority: savedPriority,
           goal_id: savedGoalId,
         });
       } catch (err) {
         // Rollback
         currentTitle = savedTitle;
-        currentTop3 = savedTop3;
+        currentPriority = savedPriority;
         currentGoalId = savedGoalId;
         errorMessage = err instanceof Error ? err.message : "Failed";
       }
@@ -217,12 +215,12 @@ describe("Pass 1 Correctness Fix 2: Task Creation Return and Flow", () => {
 
     expect(onOptimisticCreate).toHaveBeenCalledWith({
       title: "Finish physics assignment",
-      is_top3: true,
+      priority: 1,
       goal_id: "goal-1",
     });
     // Verified: input is completely restored
     expect(currentTitle).toBe("Finish physics assignment");
-    expect(currentTop3).toBe(true);
+    expect(currentPriority).toBe(1);
     expect(currentGoalId).toBe("goal-1");
     expect(errorMessage).toBe("Server timed out");
   });

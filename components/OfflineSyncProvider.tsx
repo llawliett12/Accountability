@@ -34,7 +34,7 @@ async function replay(action: QueuedAction): Promise<void> {
       const { actual_activity, intended_task_id, drift_state, startedAt } = action.payload as {
         actual_activity: string;
         intended_task_id?: string;
-        drift_state: "on_track" | "drifting" | "unknown";
+        drift_state?: "on_track" | "drifting" | "unknown";
         startedAt?: string;
       };
       await createCheckIn({ actual_activity, intended_task_id, drift_state, clientId: action.id, startedAt });
@@ -50,11 +50,12 @@ async function replay(action: QueuedAction): Promise<void> {
       return;
     }
     case "focus_session_start": {
-      const { taskId, assessmentId } = action.payload as {
+      const { taskId, assessmentId, label } = action.payload as {
         taskId?: string;
         assessmentId?: string;
+        label?: string;
       };
-      await startFocusSession(taskId, assessmentId, action.id);
+      await startFocusSession(taskId, assessmentId, action.id, label);
       return;
     }
     case "focus_pause_start": {

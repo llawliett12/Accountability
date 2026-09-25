@@ -16,7 +16,7 @@ export default function HomeLoading() {
         <div className="h-3 w-full rounded-full bg-neutral-800" />
       </section>
 
-      {/* Top 3 Priorities Card skeleton */}
+      {/* Top Priorities Card skeleton */}
       <section className="rounded-2xl bg-neutral-900 border border-neutral-800/80 p-4 space-y-3">
         <div className="flex items-center justify-between">
           <div className="h-4 w-32 rounded bg-neutral-800" />

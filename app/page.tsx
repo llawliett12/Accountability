@@ -1,15 +1,15 @@
 import { createClient } from "@/lib/supabase/server";
 import { todayISO } from "@/lib/date";
-import type { ActivityEntry } from "@/components/ActivityLedger";
 import type { Task } from "@/lib/types";
-import type { Goal } from "@/lib/goals/types";
 import type { Course, ClassDef, ClassOccurrence } from "@/lib/academics/types";
 import HomeSectionManager, { type HomeSection } from "@/components/HomeSectionManager";
 import {
   resolveHomeNextInLine,
   type AcademicCandidateEvent,
   type GoalCandidate,
+  type TaskCandidate,
 } from "@/lib/nextInLine";
+import { activeSessionCutoff, focusSessionTitle, type ActiveFocusSession } from "@/lib/focus";
 import type { AcademicScheduleItem } from "@/components/TodayAcademicSchedule";
 import { fetchNotes } from "@/lib/notes/queries";
 import { getCachedSignedUrl } from "@/lib/storage/signedUrlCache";
@@ -32,6 +32,17 @@ export default async function MorningDashboard(props: {
   const targetDateObj = new Date(date + "T00:00:00Z");
   const dayOfWeek = targetDateObj.getUTCDay();
 
+  // Only the columns Home actually uses (Next in Line + the task→goal picker).
+  type HomeGoal = {
+    id: string;
+    course_id: string | null;
+    level: string;
+    title: string;
+    due_date: string | null;
+    priority: number;
+    status: string;
+  };
+
   // Parallel fetch for Home
   const [
     planRes,
@@ -41,7 +52,7 @@ export default async function MorningDashboard(props: {
     assessmentsRes,
     deadlinesRes,
     goalsRes,
-    checkInsRes,
+    activeSessionRes,
     timetableScreenshotRes,
     homeNotes,
     journalNotes,
@@ -49,7 +60,7 @@ export default async function MorningDashboard(props: {
     supabase
       .from("daily_plans")
       .select(
-        "id, tasks(id, daily_plan_id, user_id, title, category, priority, planned_duration_min, planned_start, planned_end, deadline, notes, status, is_top3, goal_id, course_id)"
+        "id, tasks(id, daily_plan_id, user_id, title, category, priority, planned_duration_min, planned_start, planned_end, deadline, notes, status, goal_id, course_id)"
       )
       .eq("user_id", userId)
       .eq("date", date)
@@ -89,19 +100,21 @@ export default async function MorningDashboard(props: {
 
     supabase
       .from("goals")
-      .select("id, user_id, parent_id, course_id, level, title, description, start_date, due_date, priority, is_top3, status, progress, target_value, current_value, manual_progress, created_at, updated_at")
+      .select("id, course_id, level, title, due_date, priority, status")
       .eq("user_id", userId)
       .neq("status", "completed")
       .neq("status", "abandoned"),
 
+    // Focus Sessions are the single source of truth for "what I'm doing right now".
     supabase
-      .from("check_ins")
-      .select("id, actual_activity, drift_state, timestamp, status, completed_at, entry_type")
+      .from("focus_sessions")
+      .select("id, label, started_at, tasks(title), assessments(title)")
       .eq("user_id", userId)
-      .eq("entry_type", "work")
-      .in("status", ["ongoing", "paused"])
-      .order("timestamp", { ascending: false })
-      .limit(5),
+      .is("ended_at", null)
+      .gte("started_at", activeSessionCutoff())
+      .order("started_at", { ascending: false })
+      .limit(1)
+      .maybeSingle(),
 
     supabase
       .from("academic_schedule_screenshots")
@@ -156,7 +169,7 @@ export default async function MorningDashboard(props: {
     })),
   ];
 
-  const allGoals = (goalsRes.data ?? []) as Goal[];
+  const allGoals = (goalsRes.data ?? []) as HomeGoal[];
   const goalCandidates: GoalCandidate[] = allGoals.map((g) => ({
     id: g.id,
     title: g.title,
@@ -166,12 +179,23 @@ export default async function MorningDashboard(props: {
     course_id: g.course_id,
   }));
 
+  // Tasks for the selected day (client sorts them; open tasks first, P1 → P5)
+  const tasks = (planRes.data?.tasks as unknown as Task[]) ?? [];
+  const taskCandidates: TaskCandidate[] = tasks.map((t) => ({
+    id: t.id,
+    title: t.title,
+    priority: t.priority ?? 3,
+    status: t.status,
+    deadline: t.deadline,
+  }));
+
   const nextInLine = resolveHomeNextInLine(
     academicEvents,
     courses.map((c) => ({ id: c.id, code: c.code, name: c.name, active: c.active })),
     goalCandidates,
     date,
-    7
+    7,
+    taskCandidates
   );
 
   // 2. Today's Academic Schedule
@@ -234,21 +258,27 @@ export default async function MorningDashboard(props: {
   // Sort schedule chronologically
   academicSchedule.sort((a, b) => a.startTime.localeCompare(b.startTime));
 
-  // 3. Things To Be Done: Top 3 Goals
-  const top3Goals = allGoals
-    .filter((g) => g.is_top3)
-    .sort((a, b) => a.priority - b.priority)
-    .slice(0, 3);
+  // 3. Any active goal can be linked to a task
+  const linkableGoals = allGoals.map((g) => ({ id: g.id, title: g.title, level: g.level }));
 
-  // Tasks
-  const rawTasks = (planRes.data?.tasks as unknown as Task[]) ?? [];
-  const tasks = [...rawTasks].sort((a, b) => {
-    if (a.is_top3 && !b.is_top3) return -1;
-    if (!a.is_top3 && b.is_top3) return 1;
-    return (a.priority ?? 3) - (b.priority ?? 3);
-  });
-
-  const checkIns = (checkInsRes.data ?? []) as ActivityEntry[];
+  // 4. What I'm doing right now
+  const activeRow = activeSessionRes?.data as unknown as
+    | {
+        id: string;
+        label: string | null;
+        started_at: string;
+        tasks?: { title?: string | null } | { title?: string | null }[] | null;
+        assessments?: { title?: string | null } | { title?: string | null }[] | null;
+      }
+    | null;
+  const activeSession: ActiveFocusSession | null = activeRow
+    ? {
+        id: activeRow.id,
+        label: activeRow.label,
+        title: focusSessionTitle(activeRow),
+        started_at: activeRow.started_at,
+      }
+    : null;
 
   return (
     <HomeSectionManager
@@ -256,9 +286,9 @@ export default async function MorningDashboard(props: {
       today={today}
       initialSection={section}
       tasks={tasks}
-      top3Goals={top3Goals}
+      linkableGoals={linkableGoals}
       courseCodeMap={courseCodeMap}
-      checkIns={checkIns}
+      activeSession={activeSession}
       academicSchedule={academicSchedule}
       weeklyTimetableImageUrl={weeklyTimetableImageUrl}
       isWeekday={isWeekday}

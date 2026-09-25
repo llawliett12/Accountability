@@ -411,7 +411,7 @@ describe("Course Detail & Home Timetable UX Refinement Pass", () => {
       expect(revalidatePath).toHaveBeenCalledWith("/academics");
     });
 
-    it("updateTaskStatus recomputes progress for linked goal and revalidates /academics", async () => {
+    it("updateTaskStatus recomputes progress for linked goal and revalidates / and /academics", async () => {
       const { updateTaskStatus } = await import("./actions");
       const { revalidatePath } = await import("next/cache");
 
@@ -423,13 +423,13 @@ describe("Course Detail & Home Timetable UX Refinement Pass", () => {
           status: "completed",
         })
       );
-      expect(revalidatePath).toHaveBeenCalledWith("/plan");
+      expect(revalidatePath).toHaveBeenCalledWith("/");
       expect(revalidatePath).toHaveBeenCalledWith("/academics");
     });
   });
 
   describe("5. Deletion Integrity QA", () => {
-    it("deleteGoal deletes the goal record and revalidates /goals, /plan, /academics without error", async () => {
+    it("deleteGoal deletes the goal record and revalidates /goals, /, /academics without error", async () => {
       const { deleteGoal } = await import("./goals/actions");
       const { revalidatePath } = await import("next/cache");
 
@@ -437,7 +437,7 @@ describe("Course Detail & Home Timetable UX Refinement Pass", () => {
 
       expect(mockDelete).toHaveBeenCalledWith("goals");
       expect(revalidatePath).toHaveBeenCalledWith("/goals");
-      expect(revalidatePath).toHaveBeenCalledWith("/plan");
+      expect(revalidatePath).toHaveBeenCalledWith("/");
       expect(revalidatePath).toHaveBeenCalledWith("/academics");
     });
 
@@ -449,7 +449,7 @@ describe("Course Detail & Home Timetable UX Refinement Pass", () => {
 
       expect(mockDelete).toHaveBeenCalledWith("tasks");
       expect(mockDelete).not.toHaveBeenCalledWith("goals");
-      expect(revalidatePath).toHaveBeenCalledWith("/plan");
+      expect(revalidatePath).toHaveBeenCalledWith("/");
       expect(revalidatePath).toHaveBeenCalledWith("/academics");
     });
   });
@@ -522,7 +522,7 @@ describe("Course Detail & Home Timetable UX Refinement Pass", () => {
         course_id: "course-cs330",
       });
 
-      expect(revalidatePath).toHaveBeenCalledWith("/plan");
+      expect(revalidatePath).toHaveBeenCalledWith("/");
       expect(revalidatePath).toHaveBeenCalledWith("/academics/courses/course-cs330");
     });
   });

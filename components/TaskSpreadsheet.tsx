@@ -1,9 +1,11 @@
 "use client";
 
 import { useState, useTransition, useRef } from "react";
-import { updateTask, updateTaskStatus, deleteTask, toggleTaskTop3, createTask } from "@/lib/actions";
+import { updateTask, updateTaskStatus, deleteTask, createTask } from "@/lib/actions";
 import { newClientId, runOrQueue } from "@/lib/offline/client";
 import type { Task } from "@/lib/types";
+import { sortTasks, DEFAULT_TASK_PRIORITY } from "@/lib/tasks";
+import PrioritySelect from "@/components/PrioritySelect";
 
 export interface LinkableGoal {
   id: string;
@@ -13,24 +15,22 @@ export interface LinkableGoal {
 
 export interface TaskSpreadsheetProps {
   initialTasks: Task[];
+  /** Every active goal, so any task can be linked to any goal. */
   goals?: LinkableGoal[];
   selectedDate?: string;
-  isHomeView?: boolean;
-  onTaskChange?: () => void;
 }
 
 export default function TaskSpreadsheet({
   initialTasks,
   goals = [],
   selectedDate,
-  isHomeView = false,
 }: TaskSpreadsheetProps) {
   const [tasks, setTasks] = useState<Task[]>(initialTasks);
   const [, startTransition] = useTransition();
 
   // Inline Quick Add state
   const [newTitle, setNewTitle] = useState("");
-  const [newIsTop3, setNewIsTop3] = useState(false);
+  const [newPriority, setNewPriority] = useState<number>(DEFAULT_TASK_PRIORITY);
   const [newDuration, setNewDuration] = useState<number | undefined>(undefined);
   const [newGoalId, setNewGoalId] = useState("");
   const [isAdding, setIsAdding] = useState(false);
@@ -44,7 +44,7 @@ export default function TaskSpreadsheet({
     currentX: number;
   }>({ taskId: null, startX: 0, currentX: 0 });
 
-  // Map of goal titles
+  // Map of goal titles (used to tell a still-active goal from a completed one)
   const goalTitleById = new Map(goals.map((g) => [g.id, g.title]));
 
   // Re-sync tasks if initialTasks prop changes
@@ -94,31 +94,33 @@ export default function TaskSpreadsheet({
     });
   };
 
-  // Star / Top 3 Toggle handler
-  const handleStarToggle = (task: Task) => {
-    triggerHaptic(15);
-    const nextIsTop3 = !task.is_top3;
-
-    // Optimistic local update
-    setTasks((prev) =>
-      prev.map((t) =>
-        t.id === task.id
-          ? { ...t, is_top3: nextIsTop3, priority: nextIsTop3 ? 1 : 3 }
-          : t
-      )
-    );
-
+  // Priority (P1–P5) change with optimistic update + rollback
+  const handlePriorityChange = (task: Task, priority: number) => {
+    if (task.priority === priority) return;
+    triggerHaptic(10);
+    setTasks((prev) => prev.map((t) => (t.id === task.id ? { ...t, priority } : t)));
     startTransition(async () => {
       try {
-        await toggleTaskTop3(task.id, nextIsTop3);
+        await updateTask(task.id, { priority });
       } catch {
-        // Rollback
         setTasks((prev) =>
-          prev.map((t) =>
-            t.id === task.id
-              ? { ...t, is_top3: task.is_top3, priority: task.priority }
-              : t
-          )
+          prev.map((t) => (t.id === task.id ? { ...t, priority: task.priority } : t))
+        );
+      }
+    });
+  };
+
+  // Link / unlink a task to any active goal
+  const handleGoalChange = (task: Task, goalId: string) => {
+    const next = goalId || null;
+    if ((task.goal_id ?? null) === next) return;
+    setTasks((prev) => prev.map((t) => (t.id === task.id ? { ...t, goal_id: next } : t)));
+    startTransition(async () => {
+      try {
+        await updateTask(task.id, { goal_id: next });
+      } catch {
+        setTasks((prev) =>
+          prev.map((t) => (t.id === task.id ? { ...t, goal_id: task.goal_id } : t))
         );
       }
     });
@@ -170,8 +172,7 @@ export default function TaskSpreadsheet({
       daily_plan_id: "",
       title: trimmed,
       status: "not_started",
-      priority: newIsTop3 ? 1 : 3,
-      is_top3: newIsTop3,
+      priority: newPriority,
       goal_id: newGoalId || null,
       category: null,
       planned_duration_min: newDuration ?? null,
@@ -188,7 +189,7 @@ export default function TaskSpreadsheet({
     try {
       const created = await createTask({
         title: trimmed,
-        is_top3: newIsTop3,
+        priority: newPriority,
         goal_id: newGoalId || undefined,
         planned_duration_min: newDuration,
         date: selectedDate,
@@ -239,12 +240,8 @@ export default function TaskSpreadsheet({
     setTouchState({ taskId: null, startX: 0, currentX: 0 });
   };
 
-  // Sort: Top 3 first, then by priority / order
-  const sortedTasks = [...tasks].sort((a, b) => {
-    if (a.is_top3 && !b.is_top3) return -1;
-    if (!a.is_top3 && b.is_top3) return 1;
-    return (a.priority ?? 3) - (b.priority ?? 3);
-  });
+  // Open tasks first, P1 → P5; finished tasks sink to the bottom.
+  const sortedTasks = sortTasks(tasks);
 
   const totalCount = sortedTasks.length;
   const completedCount = sortedTasks.filter((t) => t.status === "completed").length;
@@ -257,7 +254,7 @@ export default function TaskSpreadsheet({
       <div className="flex flex-wrap items-center justify-between gap-2 border-b border-neutral-800/80 pb-2">
         <div className="flex items-center gap-2">
           <span className="font-mono text-sm font-semibold uppercase tracking-wider text-neutral-300">
-            {isHomeView ? "Top priorities & task ledger" : "Task Ledger"}
+            Tasks
           </span>
           <span className="font-mono text-xs text-neutral-500">
             [{completedCount}/{totalCount}] · {pct}%
@@ -296,17 +293,16 @@ export default function TaskSpreadsheet({
             <tr className="border-b border-neutral-800 bg-neutral-900/80 text-xs font-mono uppercase tracking-wider text-neutral-400">
               <th className="py-2 px-2.5 w-8 text-center">#</th>
               <th className="py-2 px-1.5 w-9 text-center">✓</th>
-              <th className="py-2 px-1.5 w-9 text-center">★</th>
+              <th className="py-2 px-1.5 w-16 text-center">P</th>
               <th className="py-2 px-3">Task</th>
               <th className="py-2 px-2 w-16 text-center">Est</th>
-              <th className="py-2 px-2 w-24 text-left">Goal</th>
+              <th className="py-2 px-2 w-28 text-left">Goal</th>
               <th className="py-2 px-2 w-28 text-left">Status</th>
               <th className="py-2 px-2 w-10 text-center"></th>
             </tr>
 
             {/* INLINE QUICK ADD ROW (Top of Table) */}
-            {!isHomeView && (
-              <tr className="border-b border-neutral-800/90 bg-neutral-900/40 hover:bg-neutral-900/70 transition-colors">
+            <tr className="border-b border-neutral-800/90 bg-neutral-900/40 hover:bg-neutral-900/70 transition-colors">
                 <td className="py-2 px-2.5 text-center font-mono text-xs text-amber-400/80">
                   +
                 </td>
@@ -314,18 +310,7 @@ export default function TaskSpreadsheet({
                   <span className="text-neutral-600 font-mono text-sm">·</span>
                 </td>
                 <td className="py-2 px-1.5 text-center">
-                  <button
-                    type="button"
-                    onClick={() => setNewIsTop3(!newIsTop3)}
-                    title={newIsTop3 ? "Priority marked" : "Mark as Top 3"}
-                    className={`h-7 w-7 inline-flex items-center justify-center rounded text-sm transition-colors ${
-                      newIsTop3
-                        ? "text-amber-400 font-bold bg-amber-950/60 border border-amber-800/60"
-                        : "text-neutral-600 hover:text-neutral-400"
-                    }`}
-                  >
-                    ★
-                  </button>
+                  <PrioritySelect value={newPriority} onChange={setNewPriority} label="New task priority" />
                 </td>
                 <td className="py-1.5 px-3">
                   <form onSubmit={handleQuickAdd} className="flex items-center gap-2">
@@ -382,14 +367,13 @@ export default function TaskSpreadsheet({
                 </td>
                 <td className="py-2 px-2"></td>
               </tr>
-            )}
           </thead>
 
           {/* TABLE BODY */}
           <tbody className="divide-y divide-neutral-800/60">
             {sortedTasks.map((task, idx) => {
               const isCompleted = task.status === "completed";
-              const isTop3 = task.is_top3;
+              const isUrgent = !isCompleted && task.priority === 1;
               const isTemp = task.id.startsWith("temp-");
               const isSwiping = touchState.taskId === task.id;
               const swipeDiff = isSwiping ? touchState.currentX - touchState.startX : 0;
@@ -407,7 +391,7 @@ export default function TaskSpreadsheet({
                   className={`group transition-colors ${
                     isCompleted
                       ? "bg-neutral-950/60 hover:bg-neutral-900/40"
-                      : isTop3
+                      : isUrgent
                       ? "bg-amber-950/15 hover:bg-amber-950/25"
                       : "hover:bg-neutral-900/50"
                   } ${isTemp ? "opacity-60 animate-pulse" : ""}`}
@@ -416,7 +400,7 @@ export default function TaskSpreadsheet({
                   <td className="py-2.5 px-2.5 text-center font-mono text-xs">
                     <span
                       className={`${
-                        isTop3
+                        isUrgent
                           ? "text-amber-400 font-semibold"
                           : "text-neutral-600"
                       }`}
@@ -463,25 +447,14 @@ export default function TaskSpreadsheet({
                     </button>
                   </td>
 
-                  {/* Star Toggle */}
+                  {/* Priority P1–P5 */}
                   <td className="py-2 px-1.5 text-center">
-                    <button
-                      type="button"
-                      onClick={() => handleStarToggle(task)}
-                      title={isTop3 ? "Remove priority" : "Make Top 3 Priority"}
-                      aria-label={isTop3 ? "Remove priority" : "Make Top 3 Priority"}
-                      className="min-h-[44px] min-w-[44px] inline-flex items-center justify-center -m-2 group/star"
-                    >
-                      <span
-                        className={`text-sm transition-transform group-active/star:scale-90 ${
-                          isTop3
-                            ? "text-amber-400 font-bold"
-                            : "text-neutral-600 hover:text-amber-400/80"
-                        }`}
-                      >
-                        {isTop3 ? "★" : "☆"}
-                      </span>
-                    </button>
+                    <PrioritySelect
+                      value={task.priority ?? DEFAULT_TASK_PRIORITY}
+                      onChange={(p) => handlePriorityChange(task, p)}
+                      disabled={isTemp}
+                      label={`Priority for ${task.title}`}
+                    />
                   </td>
 
                   {/* Task Title */}
@@ -492,7 +465,7 @@ export default function TaskSpreadsheet({
                         className={`cursor-pointer break-words transition-colors ${
                           isCompleted
                             ? "line-through text-neutral-500"
-                            : isTop3
+                            : isUrgent
                             ? "font-medium text-amber-200"
                             : "text-neutral-200"
                         }`}
@@ -519,15 +492,25 @@ export default function TaskSpreadsheet({
                     )}
                   </td>
 
-                  {/* Linked Goal */}
+                  {/* Linked Goal (any active goal) */}
                   <td className="py-2.5 px-2 text-neutral-400 whitespace-nowrap">
-                    {task.goal_id && goalTitleById.has(task.goal_id) ? (
-                      <span className="font-mono text-xs text-neutral-400 truncate max-w-[90px] inline-block">
-                        🎯 {goalTitleById.get(task.goal_id)}
-                      </span>
-                    ) : (
-                      <span className="text-neutral-700 font-mono text-xs">--</span>
-                    )}
+                    <select
+                      value={task.goal_id ?? ""}
+                      disabled={isTemp}
+                      onChange={(e) => handleGoalChange(task, e.target.value)}
+                      aria-label={`Goal for ${task.title}`}
+                      className="w-full max-w-[110px] truncate bg-neutral-900 border border-neutral-800 text-xs text-neutral-400 rounded px-1 py-1 outline-none cursor-pointer"
+                    >
+                      <option value="">--</option>
+                      {task.goal_id && !goalTitleById.has(task.goal_id) && (
+                        <option value={task.goal_id}>🎯 Linked goal</option>
+                      )}
+                      {goals.map((g) => (
+                        <option key={g.id} value={g.id}>
+                          {g.title}
+                        </option>
+                      ))}
+                    </select>
                   </td>
 
                   {/* Status Pill / Dropdown */}

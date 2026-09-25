@@ -1,5 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import { average } from "@/lib/analytics/engine";
+import { summarizePeriod, type PeriodSummary } from "@/lib/analytics/summary";
 
 export interface DailyMetricsRow {
   date: string;
@@ -221,4 +222,39 @@ export function addDays(date: string, delta: number): string {
   const d = new Date(`${date}T00:00:00Z`);
   d.setUTCDate(d.getUTCDate() + delta);
   return d.toISOString().slice(0, 10);
+}
+
+export interface PeriodComparison {
+  start: string;
+  end: string;
+  rows: DailyMetricsRow[];
+  current: PeriodSummary;
+  previous: PeriodSummary;
+}
+
+/**
+ * The last `days` days ending on `end`, compared with the `days` before that.
+ * /weekly (7) and /monthly (30) are thin wrappers around this.
+ */
+export async function fetchPeriodComparison(
+  userId: string,
+  days: number,
+  end: string
+): Promise<PeriodComparison> {
+  const start = addDays(end, -(days - 1));
+  const prevEnd = addDays(start, -1);
+  const prevStart = addDays(prevEnd, -(days - 1));
+
+  const [rows, previousRows] = await Promise.all([
+    fetchDailyMetrics(userId, start, end),
+    fetchDailyMetrics(userId, prevStart, prevEnd),
+  ]);
+
+  return {
+    start,
+    end,
+    rows,
+    current: summarizePeriod(rows),
+    previous: summarizePeriod(previousRows),
+  };
 }

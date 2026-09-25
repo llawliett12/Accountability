@@ -128,7 +128,6 @@ export async function markAttendance(occurrenceId: string, status: AttendanceSta
   revalidatePath("/academics/calendar");
   revalidatePath(`/academics/classes/${data.class_id}`);
   revalidatePath("/");
-  revalidatePath("/plan");
 }
 
 export async function markListening(occurrenceId: string, rating: number) {

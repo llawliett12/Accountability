@@ -1,8 +1,7 @@
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { getOrCreateDailyPlan } from "@/lib/actions";
-import { fetchDailyMetrics, addDays } from "@/lib/analytics/queries";
-import { sum, average } from "@/lib/analytics/engine";
+import { fetchDailyMetrics, addDays, fetchPeriodComparison } from "@/lib/analytics/queries";
 import { fetchAcademicDashboard } from "@/lib/academics/queries";
 import { fetchScreenTimeMinutesByDate } from "@/lib/screen-time/queries";
 import { todayISO } from "@/lib/date";
@@ -33,6 +32,7 @@ export default async function ReviewPage(props: { searchParams?: Promise<{ date?
   const [
     planId,
     weeklyMetrics,
+    weeklySummaryComparison,
     academicDash,
     screenTimeMap,
     streaksRes,
@@ -45,6 +45,8 @@ export default async function ReviewPage(props: { searchParams?: Promise<{ date?
   ] = await Promise.all([
     getOrCreateDailyPlan(selectedDate, user.id),
     fetchDailyMetrics(user.id, weekStart, selectedDate),
+    // Same shared calculation /weekly uses — this page never computes its own numbers.
+    fetchPeriodComparison(user.id, 7, selectedDate),
     fetchAcademicDashboard(user.id).catch(() => null),
     fetchScreenTimeMinutesByDate(user.id, weekStart, selectedDate).catch(() => new Map<string, number>()),
     supabase.from("streaks").select("*").eq("user_id", user.id),
@@ -103,15 +105,12 @@ export default async function ReviewPage(props: { searchParams?: Promise<{ date?
     .eq("daily_plan_id", planId)
     .in("status", ["not_started", "in_progress"]);
 
-  // --- SECTION 1: WEEKLY METRICS COMPUTATION ---
-  const tasksPlanned = sum(weeklyMetrics.map((r) => r.tasksPlanned));
-  const tasksCompleted = sum(weeklyMetrics.map((r) => r.tasksCompleted));
-  const totalFocusMinutes = sum(weeklyMetrics.map((r) => r.focusMinutes));
-
-  const validSleep = weeklyMetrics
-    .map((r) => r.sleepMinutes)
-    .filter((s): s is number => s !== null && s > 0);
-  const avgSleepMinutes = validSleep.length > 0 ? average(validSleep) : null;
+  // --- SECTION 1: WEEKLY SUMMARY — the same numbers /weekly shows ---
+  const weeklySummary = weeklySummaryComparison.current;
+  const tasksPlanned = weeklySummary.tasksPlanned;
+  const tasksCompleted = weeklySummary.tasksCompleted;
+  const totalFocusMinutes = weeklySummary.focusMinutes;
+  const avgSleepMinutes = weeklySummary.avgSleepMinutes;
 
   const screenTimeValues = Array.from(screenTimeMap.values()).filter((m) => m > 0);
   const avgScreenTimeMinutes =

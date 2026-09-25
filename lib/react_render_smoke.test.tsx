@@ -133,12 +133,11 @@ describe("React Render Smoke & Crash Prevention Tests", () => {
         today="2026-09-20"
         isWeekday={true}
         tasks={[]}
-        top3Goals={[]}
-        checkIns={[]}
         courseCodeMap={{}}
         nextInLine={null}
         weeklyTimetableImageUrl="https://example.com/timetable.jpg"
         academicSchedule={[]}
+        activeSession={null}
         homeNotes={[
           {
             id: "n-h1",

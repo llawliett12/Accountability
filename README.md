@@ -69,10 +69,12 @@ npm run build
 ## What's wired up
 
 - **Auth**: Supabase email/password, session refreshed via middleware.
-- **Plan** (`/plan`): quick-add tasks, mark Top 3, one-tap status changes.
-- **Now** (`/now`): check-in ("what am I doing right now?") + focus timer,
-  offline-capable (queues and syncs if the network drops mid-action).
-- **Night review** (`/night`): reconciles any task left `not_started` or
+- **Home** (`/`): today's Top Priorities (Tasks, P1–P5), "What am I doing
+  right now?", Next in Line, and the full Tasks ledger.
+- **Focus** (`/focus`): the running Focus Session (started from Home or here)
+  plus the manual timer, offline-capable (queues and syncs if the network
+  drops mid-action).
+- **Review** (`/review`): reconciles any task left `not_started` or
   `in_progress` at day's end, then computes the day's discipline score.
 - **Discipline log** (`/discipline/[date]`): verdict + transparent score
   breakdown, kept structurally separate from the Daily Report.

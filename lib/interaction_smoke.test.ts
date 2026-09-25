@@ -191,11 +191,11 @@ describe("Real Interaction Smoke Tests", () => {
   });
 
   describe("Flow 6: Quick Activity Journaling to Review", () => {
-    it("createQuickActivity inserts check_ins with entry_type='journal' and status='logged'", async () => {
-      const { createQuickActivity } = await import("./actions");
-      await createQuickActivity({
+    it("createCheckIn inserts check_ins with entry_type='journal' and status='logged'", async () => {
+      const { createCheckIn } = await import("./actions");
+      await createCheckIn({
         actual_activity: "Read Research Paper on Memory Hierarchies",
-        timestamp: "2026-09-20T10:00:00.000Z",
+        startedAt: "2026-09-20T10:00:00.000Z",
       });
 
       expect(mockInsert).toHaveBeenCalledWith(

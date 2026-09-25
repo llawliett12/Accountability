@@ -40,7 +40,7 @@ export default function PlanDayGesture({ date, children }: { date: string; child
         start.current = null;
         setOffset(0);
         if (Math.abs(dx) < 80 || Math.abs(dx) <= Math.abs(dy)) return;
-        router.push(`/?date=${shiftDateISO(date, dx < 0 ? 1 : -1)}`);
+        router.push(`/?date=${shiftDateISO(date, dx < 0 ? 1 : -1)}&section=tasks`);
       }}
       style={{ transform: offset ? `translateX(${offset}px)` : undefined, transition: offset ? "none" : "transform 160ms ease" }}
       className="touch-pan-y"

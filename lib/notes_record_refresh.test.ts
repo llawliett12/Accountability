@@ -111,8 +111,7 @@ describe("Notes and Record Refresh Verification", () => {
       activeSection ? "hidden" : "space-y-4";
 
     expect(getHomeLevel1Class(null)).toBe("space-y-4");
-    expect(getHomeLevel1Class("priorities")).toBe("hidden");
-    expect(getHomeLevel1Class("current-work")).toBe("hidden");
+    expect(getHomeLevel1Class("tasks")).toBe("hidden");
 
     // When returning from subsection back to main view (activeSection = null)
     expect(getHomeLevel1Class(null)).toBe("space-y-4");

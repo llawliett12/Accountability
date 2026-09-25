@@ -91,7 +91,7 @@ export default async function AssessmentDetailPage({
 
       <FocusTimer
         assessmentId={assessment.id}
-        label={`Prep session for ${assessment.title}`}
+        heading={`Prep session for ${assessment.title}`}
       />
     </div>
   );

@@ -34,7 +34,7 @@ export default function NextInLineCard({ item }: { item: NextInLineResult | null
           <span className="font-mono text-sm text-neutral-500">None scheduled</span>
         </div>
         <p className="mt-2 text-sm text-neutral-400 font-sans">
-          No upcoming assessments, deadlines, or high-priority goals on the immediate horizon.
+          No open tasks, upcoming assessments, deadlines, or active goals right now.
         </p>
       </section>
     );
@@ -100,8 +100,48 @@ export default function NextInLineCard({ item }: { item: NextInLineResult | null
     );
   }
 
-  // Priority Goal
-  const countdown = item.dueDate ? getCountdownLabel(item.dueDate) : "Priority Goal";
+  if (item.kind === "task") {
+    const countdown = item.dueDate ? getCountdownLabel(item.dueDate) : "Today";
+    const isUrgent = countdown === "Today" || countdown === "Tomorrow" || countdown.includes("overdue");
+
+    return (
+      <section
+        aria-label="Next in Line"
+        className="rounded-2xl border border-emerald-500/30 bg-gradient-to-br from-emerald-950/40 via-neutral-900/60 to-neutral-950 p-5 sm:p-6 shadow-lg shadow-black/40 hover:border-emerald-500/50 transition-all"
+      >
+        <Link href={item.href} className="block group">
+          <div className="flex items-center justify-between gap-2 mb-3">
+            <div className="flex items-center gap-2">
+              <span className="inline-flex items-center gap-1.5 font-mono text-xs uppercase tracking-wider font-bold text-emerald-400">
+                <span className="inline-block h-2 w-2 rounded-full bg-emerald-400 animate-pulse" />
+                Next in Line · Task
+              </span>
+              <span className="rounded bg-emerald-900/50 border border-emerald-700/60 px-2 py-0.5 font-mono text-xs text-emerald-200 uppercase font-semibold">
+                P{item.priority}
+              </span>
+            </div>
+
+            <span
+              className={`font-mono text-sm font-bold px-2.5 py-1 rounded-md tracking-tight ${
+                isUrgent
+                  ? "bg-emerald-400 text-neutral-950 shadow-sm"
+                  : "bg-neutral-800 text-emerald-300 border border-neutral-700"
+              }`}
+            >
+              {countdown}
+            </span>
+          </div>
+
+          <h3 className="text-lg sm:text-xl font-bold tracking-tight text-white group-hover:text-emerald-200 transition-colors">
+            {item.title}
+          </h3>
+        </Link>
+      </section>
+    );
+  }
+
+  // Goal
+  const countdown = item.dueDate ? getCountdownLabel(item.dueDate) : "Goal";
   const isUrgent = countdown === "Today" || countdown === "Tomorrow" || countdown.includes("overdue");
 
   return (
@@ -115,7 +155,7 @@ export default function NextInLineCard({ item }: { item: NextInLineResult | null
           <div className="flex items-center gap-2">
             <span className="inline-flex items-center gap-1.5 font-mono text-xs uppercase tracking-wider font-bold text-blue-400">
               <span className="inline-block h-2 w-2 rounded-full bg-blue-400 animate-pulse" />
-              Next in Line · Priority Target
+              Next in Line · Goal
             </span>
             <span className="rounded bg-blue-900/50 border border-blue-700/60 px-2 py-0.5 font-mono text-xs text-blue-200 uppercase font-semibold">
               P{item.priority}
@@ -149,7 +189,7 @@ export default function NextInLineCard({ item }: { item: NextInLineResult | null
             {item.dueDate ? (
               <span className="text-neutral-400">Due {item.dueDate}</span>
             ) : (
-              <span className="text-neutral-500">High priority active goal</span>
+              <span className="text-neutral-500">Active goal</span>
             )}
           </div>
         </div>

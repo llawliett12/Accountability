@@ -20,7 +20,6 @@ export interface Task {
   deadline: string | null;
   notes: string | null;
   status: TaskStatus;
-  is_top3: boolean;
   goal_id: string | null;
   course_id?: string | null;
 }
@@ -36,10 +35,13 @@ export type PauseReason =
   | "important_work"
   | "other";
 
+// A Focus Session is the single source of truth for "what I'm doing right now".
+// It may be tied to a planned Task / assessment, or exist with just a free-text label.
 export interface FocusSession {
   id: string;
   user_id: string;
   task_id: string | null;
+  label: string | null;
   started_at: string;
   ended_at: string | null;
   focused_duration_sec: number | null;

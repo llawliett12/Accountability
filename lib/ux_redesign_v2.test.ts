@@ -53,13 +53,13 @@ describe("UX Redesign V2 Server Actions", () => {
       const { updateTask } = await import("./actions");
       await updateTask("task-123", {
         title: "Updated task",
-        is_top3: true,
+        priority: 1,
         planned_duration_min: 45,
       });
       expect(mockUpdate).toHaveBeenCalledWith(
         expect.objectContaining({
           title: "Updated task",
-          is_top3: true,
+          priority: 1,
           planned_duration_min: 45,
         })
       );
@@ -108,14 +108,11 @@ describe("UX Redesign V2 Server Actions", () => {
       );
     });
 
-    it("toggles task Top 3 priority", async () => {
-      const { toggleTaskTop3 } = await import("./actions");
-      await toggleTaskTop3("task-123", true);
+    it("changes a task's priority (P1–P5)", async () => {
+      const { updateTask } = await import("./actions");
+      await updateTask("task-123", { priority: 1 });
       expect(mockUpdate).toHaveBeenCalledWith(
-        expect.objectContaining({
-          is_top3: true,
-          priority: 1,
-        })
+        expect.objectContaining({ priority: 1 })
       );
     });
   });

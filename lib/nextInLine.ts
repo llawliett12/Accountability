@@ -1,5 +1,12 @@
 // Pure deterministic shared logic for "Next in Line" across Home and Academics.
 // No DB calls, no AI, no side effects — fully testable in isolation.
+//
+// Home's rule, in one line: an academic event inside the near-term window wins,
+// unless an open Task is due sooner; otherwise the soonest-due open Task or
+// Goal wins. On the same due date (or when neither has one) a Task comes first,
+// then priority (P1 first) within the same kind.
+
+import { isOpenTask } from "@/lib/tasks";
 
 export interface NextInLineCourse {
   id: string;
@@ -27,6 +34,14 @@ export interface GoalCandidate {
   course_id?: string | null;
 }
 
+export interface TaskCandidate {
+  id: string;
+  title: string;
+  priority: number; // 1 (highest) .. 5
+  status: string; // 'not_started' | 'in_progress' | 'completed' | ...
+  deadline?: string | null; // ISO date or timestamp; only the date part is used
+}
+
 export interface NextInLineAcademicResult {
   kind: "academic";
   id: string;
@@ -49,7 +64,19 @@ export interface NextInLineGoalResult {
   href: string;
 }
 
-export type NextInLineResult = NextInLineAcademicResult | NextInLineGoalResult;
+export interface NextInLineTaskResult {
+  kind: "task";
+  id: string;
+  title: string;
+  dueDate?: string | null;
+  priority: number;
+  href: string;
+}
+
+export type NextInLineResult =
+  | NextInLineAcademicResult
+  | NextInLineGoalResult
+  | NextInLineTaskResult;
 
 export function daysBetween(fromISO: string, toISO: string): number {
   const from = new Date(fromISO + "T00:00:00Z");
@@ -113,71 +140,124 @@ export function resolveAcademicsNextInLine(
   };
 }
 
+function dayOf(value?: string | null): string | null {
+  return value ? value.slice(0, 10) : null;
+}
+
+interface RankedCandidate {
+  kind: "task" | "goal";
+  id: string;
+  due: string | null; // YYYY-MM-DD
+  priority: number;
+  bucket: 0 | 1 | 2; // 0 = overdue task, 1 = dated (due today or later), 2 = undated / overdue goal
+}
+
+function compareRanked(a: RankedCandidate, b: RankedCandidate): number {
+  if (a.bucket !== b.bucket) return a.bucket - b.bucket;
+  if (a.bucket !== 2 && a.due !== b.due) return a.due!.localeCompare(b.due!);
+  // Task priority and Goal priority are separate scales, so never compare them
+  // across kinds: on the same due date (or both undated) a Task comes first.
+  if (a.kind !== b.kind) return a.kind === "task" ? -1 : 1;
+  if (a.priority !== b.priority) return a.priority - b.priority;
+  return a.id.localeCompare(b.id);
+}
+
 /**
  * Home Next in Line:
- * 1. Checks if closest academic event across active courses is within ~7 days.
- * 2. If yes, the academic event wins.
- * 3. If no, falls back to an active global goal (due soonest, or highest priority).
+ * 1. If the closest academic event is within ~7 days it is the default winner…
+ *    …unless an open Task is due strictly sooner, in which case the Task wins.
+ * 2. Otherwise the soonest-due open Task or active Goal wins. On the same due
+ *    date (or when both are undated) a Task beats a Goal; priority (P1 first)
+ *    only orders items of the same kind.
+ * 3. With nothing else, a far-off academic event is still shown rather than nothing.
  */
 export function resolveHomeNextInLine(
   events: AcademicCandidateEvent[],
   courses: NextInLineCourse[],
   goals: GoalCandidate[],
   todayISO: string,
-  nearTermThresholdDays = 7
+  nearTermThresholdDays = 7,
+  tasks: TaskCandidate[] = []
 ): NextInLineResult | null {
   const academicNext = resolveAcademicsNextInLine(events, courses, todayISO);
 
-  if (academicNext) {
-    const diffDays = daysBetween(todayISO, academicNext.date);
-    if (diffDays >= 0 && diffDays <= nearTermThresholdDays) {
-      return academicNext;
-    }
-  }
-
-  // Fallback to active global goal
   const courseMap = new Map<string, NextInLineCourse>();
   for (const c of courses) {
     courseMap.set(c.id, c);
   }
 
-  const activeGoals = goals.filter(
-    (g) => g.status === "in_progress" || g.status === "not_started"
+  const openTasks = tasks.filter(isOpenTask);
+  const taskById = new Map(openTasks.map((t) => [t.id, t]));
+  const goalById = new Map(
+    goals
+      .filter((g) => g.status === "in_progress" || g.status === "not_started")
+      .map((g) => [g.id, g])
   );
 
-  if (activeGoals.length === 0) {
-    // If no goals, and there was an academic event beyond 7 days, still show the academic event rather than nothing
+  const ranked: RankedCandidate[] = [];
+  for (const t of openTasks) {
+    const due = dayOf(t.deadline);
+    ranked.push({
+      kind: "task",
+      id: t.id,
+      due,
+      priority: t.priority,
+      bucket: due && due < todayISO ? 0 : due ? 1 : 2,
+    });
+  }
+  for (const g of goalById.values()) {
+    const hasDue = Boolean(g.due_date && g.due_date >= todayISO);
+    ranked.push({
+      kind: "goal",
+      id: g.id,
+      due: hasDue ? g.due_date! : null,
+      priority: g.priority,
+      bucket: hasDue ? 1 : 2,
+    });
+  }
+  ranked.sort(compareRanked);
+
+  const toResult = (r: RankedCandidate): NextInLineResult => {
+    if (r.kind === "task") {
+      const t = taskById.get(r.id)!;
+      return {
+        kind: "task",
+        id: t.id,
+        title: t.title,
+        dueDate: dayOf(t.deadline),
+        priority: t.priority,
+        href: `/?date=${todayISO}&section=tasks`,
+      };
+    }
+    const g = goalById.get(r.id)!;
+    const linkedCourse = g.course_id ? courseMap.get(g.course_id) : undefined;
+    return {
+      kind: "goal",
+      id: g.id,
+      title: g.title,
+      dueDate: g.due_date ?? null,
+      priority: g.priority,
+      courseCode: linkedCourse?.code ?? null,
+      href: `/goals/${g.id}`,
+    };
+  };
+
+  if (academicNext) {
+    const diffDays = daysBetween(todayISO, academicNext.date);
+    if (diffDays >= 0 && diffDays <= nearTermThresholdDays) {
+      // A dated Task due strictly before the academic event takes the slot.
+      const soonestDatedTask = ranked.find((r) => r.kind === "task" && r.bucket !== 2);
+      if (soonestDatedTask && soonestDatedTask.due! < academicNext.date) {
+        return toResult(soonestDatedTask);
+      }
+      return academicNext;
+    }
+  }
+
+  if (ranked.length === 0) {
+    // Nothing else to show: a far-off academic event still beats an empty card.
     return academicNext;
   }
 
-  activeGoals.sort((a, b) => {
-    // Prefer goals with upcoming due date >= today
-    const aHasDue = Boolean(a.due_date && a.due_date >= todayISO);
-    const bHasDue = Boolean(b.due_date && b.due_date >= todayISO);
-
-    if (aHasDue && !bHasDue) return -1;
-    if (!aHasDue && bHasDue) return 1;
-
-    if (aHasDue && bHasDue) {
-      if (a.due_date !== b.due_date) return a.due_date!.localeCompare(b.due_date!);
-    }
-
-    // Secondary: priority (1=highest .. 5)
-    if (a.priority !== b.priority) return a.priority - b.priority;
-
-    return a.id.localeCompare(b.id);
-  });
-
-  const topGoal = activeGoals[0];
-  const linkedCourse = topGoal.course_id ? courseMap.get(topGoal.course_id) : undefined;
-
-  return {
-    kind: "goal",
-    id: topGoal.id,
-    title: topGoal.title,
-    dueDate: topGoal.due_date ?? null,
-    priority: topGoal.priority,
-    courseCode: linkedCourse?.code ?? null,
-    href: `/goals/${topGoal.id}`,
-  };
+  return toResult(ranked[0]);
 }

@@ -154,7 +154,7 @@ export async function deleteGoal(goalId: string) {
 
   await recomputeAndStoreProgress(user.id);
   revalidatePath("/goals");
-  revalidatePath("/plan");
+  revalidatePath("/");
   revalidatePath("/academics");
   if (existingGoal?.course_id) {
     revalidatePath(`/academics/courses/${existingGoal.course_id}`);
@@ -191,7 +191,7 @@ export async function linkTaskToGoal(taskId: string, goalId: string | null) {
   if (error) throw error;
 
   await recomputeAndStoreProgress(user.id);
-  revalidatePath("/plan");
+  revalidatePath("/");
   revalidatePath("/goals");
   revalidatePath("/academics");
   revalidatePath("/");

@@ -13,6 +13,7 @@ import {
 } from "@/lib/scoring/engine";
 import { recomputeAndStoreProgress } from "@/lib/goals/actions";
 import { todayISO } from "@/lib/date";
+import { clampPriority } from "@/lib/tasks";
 
 // Ensures a daily_plans row exists for today (or a given date) and returns its id.
 // Optional userId parameter avoids redundant getUser() network roundtrips when caller already authenticated.
@@ -57,7 +58,6 @@ export async function createTask(input: {
   planned_end?: string;
   deadline?: string;
   notes?: string;
-  is_top3?: boolean;
   goal_id?: string;
   course_id?: string | null;
   daily_plan_id?: string;
@@ -80,13 +80,12 @@ export async function createTask(input: {
       daily_plan_id: dailyPlanId,
       title: input.title,
       category: input.category ?? null,
-      priority: input.priority ?? 3,
+      priority: clampPriority(input.priority),
       planned_duration_min: input.planned_duration_min ?? null,
       planned_start: input.planned_start ?? null,
       planned_end: input.planned_end ?? null,
       deadline: input.deadline ?? null,
       notes: input.notes ?? null,
-      is_top3: input.is_top3 ?? false,
       goal_id: input.goal_id ?? null,
       course_id: input.course_id ?? null,
     })
@@ -111,7 +110,6 @@ export async function createTask(input: {
     }
   }
 
-  revalidatePath("/plan");
   revalidatePath("/academics");
   if (input.course_id) {
     revalidatePath(`/academics/courses/${input.course_id}`);
@@ -181,7 +179,6 @@ export async function updateTaskStatus(taskId: string, status: string, clientId?
     }
   }
 
-  revalidatePath("/plan");
   revalidatePath("/academics");
   if (updated?.course_id) {
     revalidatePath(`/academics/courses/${updated.course_id}`);
@@ -194,7 +191,6 @@ export async function updateTask(
   taskId: string,
   patch: {
     title?: string;
-    is_top3?: boolean;
     planned_duration_min?: number | null;
     planned_start?: string | null;
     planned_end?: string | null;
@@ -214,6 +210,7 @@ export async function updateTask(
     .from("tasks")
     .update({
       ...patch,
+      ...(patch.priority !== undefined ? { priority: clampPriority(patch.priority) } : {}),
       updated_at: new Date().toISOString(),
     })
     .eq("id", taskId)
@@ -231,7 +228,6 @@ export async function updateTask(
     }
   }
 
-  revalidatePath("/plan");
   revalidatePath("/academics");
   const affectedCourseId = patch.course_id || updated?.course_id;
   if (affectedCourseId) {
@@ -271,7 +267,6 @@ export async function deleteTask(taskId: string) {
     }
   }
 
-  revalidatePath("/plan");
   revalidatePath("/academics");
   if (task?.course_id) {
     revalidatePath(`/academics/courses/${task.course_id}`);
@@ -319,20 +314,22 @@ export async function reconcileTask(
 
   if (updated?.goal_id) await recomputeAndStoreProgress(user.id);
 
-  revalidatePath("/plan");
-  revalidatePath("/night");
+  revalidatePath("/review");
+  revalidatePath("/");
 }
 
+// A check-in is a passive, timestamped log entry ("what I did"). It has no
+// live state — anything that is *happening right now* is a Focus Session.
 export async function createCheckIn(input: {
   actual_activity: string;
+  drift_state?: "on_track" | "drifting" | "unknown";
   intended_task_id?: string;
-  drift_state: "on_track" | "drifting" | "unknown";
   clientId?: string;
   startedAt?: string;
 }) {
   const actualActivity = input.actual_activity.trim();
   if (!actualActivity) throw new Error("Activity cannot be empty");
-  const startedAt = input.startedAt && !Number.isNaN(Date.parse(input.startedAt))
+  const timestamp = input.startedAt && !Number.isNaN(Date.parse(input.startedAt))
     ? input.startedAt
     : new Date().toISOString();
   const supabase = await createClient();
@@ -341,71 +338,26 @@ export async function createCheckIn(input: {
   } = await supabase.auth.getUser();
   if (!user) throw new Error("Not authenticated");
 
-  const checkIn = {
+  const record = {
     user_id: user.id,
     actual_activity: actualActivity,
     intended_task_id: input.intended_task_id ?? null,
-    drift_state: input.drift_state,
+    drift_state: input.drift_state ?? "unknown",
     client_id: input.clientId ?? null,
-    timestamp: startedAt,
-    status: "ongoing",
-    entry_type: "work",
-  };
-  const { data: inserted, error: insertError } = await supabase.from("check_ins").insert(checkIn).select("id, actual_activity, timestamp, status, completed_at").maybeSingle();
-  if (insertError && (!input.clientId || insertError.code !== "23505")) throw insertError;
-
-  // A queued replay may repeat a write whose response was lost. The unique
-  // (user_id, client_id) index makes this lookup safe and keeps the original
-  // timestamp/status intact instead of rewriting an already-synced activity.
-  const { data: saved, error: savedError } = inserted
-    ? { data: inserted, error: null }
-    : await supabase
-      .from("check_ins")
-      .select("id, actual_activity, timestamp, status, completed_at")
-      .eq("user_id", user.id)
-      .eq("client_id", input.clientId!)
-      .maybeSingle();
-  if (savedError || !saved) throw savedError ?? insertError ?? new Error("Activity was not saved");
-
-  await bumpStreak(supabase, user.id, "tracking", todayISO());
-
-  revalidatePath("/now");
-  revalidatePath("/");
-  revalidatePath("/review");
-  return saved;
-}
-
-export async function createQuickActivity(input: {
-  actual_activity: string;
-  timestamp?: string;
-  clientId?: string;
-}) {
-  const title = input.actual_activity.trim();
-  if (!title) throw new Error("Activity cannot be empty");
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) throw new Error("Not authenticated");
-
-  const startedAt = input.timestamp ?? new Date().toISOString();
-  const record = {
-    user_id: user.id,
-    actual_activity: title,
-    timestamp: startedAt,
+    timestamp,
     status: "logged",
     entry_type: "journal",
-    client_id: input.clientId ?? null,
   };
-
   const { data: inserted, error: insertError } = await supabase
     .from("check_ins")
     .insert(record)
     .select("id, actual_activity, timestamp, status, entry_type")
     .maybeSingle();
-
   if (insertError && (!input.clientId || insertError.code !== "23505")) throw insertError;
 
+  // A queued replay may repeat a write whose response was lost. The unique
+  // (user_id, client_id) index makes this lookup safe and keeps the original
+  // entry intact instead of writing a duplicate.
   const { data: saved, error: savedError } = inserted
     ? { data: inserted, error: null }
     : await supabase
@@ -414,8 +366,13 @@ export async function createQuickActivity(input: {
         .eq("user_id", user.id)
         .eq("client_id", input.clientId!)
         .maybeSingle();
+  if (savedError || !saved) throw savedError ?? insertError ?? new Error("Check-in was not saved");
 
-  if (savedError || !saved) throw savedError ?? insertError ?? new Error("Quick activity was not saved");
+  try {
+    await bumpStreak(supabase, user.id, "tracking", todayISO());
+  } catch (streakErr) {
+    console.warn("Non-fatal: bumpStreak failed:", streakErr);
+  }
 
   revalidatePath("/");
   revalidatePath("/review");
@@ -431,7 +388,7 @@ export async function updateCheckIn(checkInId: string, actualActivity: string) {
   const { error } = await supabase.from("check_ins").update({ actual_activity: title }).eq("id", checkInId).eq("user_id", user.id);
   if (error) throw error;
   revalidatePath("/");
-  revalidatePath("/now");
+  revalidatePath("/review");
 }
 
 export async function deleteCheckIn(checkInId: string) {
@@ -441,35 +398,7 @@ export async function deleteCheckIn(checkInId: string) {
   const { error } = await supabase.from("check_ins").delete().eq("id", checkInId).eq("user_id", user.id);
   if (error) throw error;
   revalidatePath("/");
-  revalidatePath("/now");
   revalidatePath("/review");
-}
-
-export async function updateCheckInStatus(checkInId: string, status: "ongoing" | "paused" | "completed") {
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) throw new Error("Not authenticated");
-  const changes = status === "completed"
-    ? { status, completed_at: new Date().toISOString() }
-    : { status, completed_at: null };
-  const { data, error } = await supabase
-    .from("check_ins")
-    .update(changes)
-    .eq("id", checkInId)
-    .eq("user_id", user.id)
-    .in("status", ["ongoing", "paused"])
-    .select("id, actual_activity, timestamp, status, completed_at")
-    .maybeSingle();
-  if (error) throw error;
-  if (!data) throw new Error("Activity is no longer current");
-  revalidatePath("/");
-  revalidatePath("/now");
-  revalidatePath("/review");
-  return data;
-}
-
-export async function completeCheckIn(checkInId: string) {
-  return updateCheckInStatus(checkInId, "completed");
 }
 
 // --- Focus timer: timestamp-based so it survives Android tab backgrounding ---
@@ -483,7 +412,8 @@ export async function completeCheckIn(checkInId: string) {
 export async function startFocusSession(
   taskId?: string,
   assessmentId?: string,
-  clientId?: string
+  clientId?: string,
+  label?: string
 ) {
   const supabase = await createClient();
   const {
@@ -499,13 +429,23 @@ export async function startFocusSession(
       user_id: user.id,
       task_id: taskId ?? null,
       assessment_id: assessmentId ?? null,
+      label: label?.trim().slice(0, 200) || null,
       started_at: new Date().toISOString(),
     },
     { onConflict: "id", ignoreDuplicates: true }
   );
 
   if (error) throw error;
-  revalidatePath("/now");
+
+  // Saying what you're doing counts as tracking; idempotent per day.
+  try {
+    await bumpStreak(supabase, user.id, "tracking", todayISO());
+  } catch (streakErr) {
+    console.warn("Non-fatal: bumpStreak failed:", streakErr);
+  }
+
+  revalidatePath("/focus");
+  revalidatePath("/");
   return id;
 }
 
@@ -536,7 +476,7 @@ export async function startPause(sessionId: string, reason: string, clientId?: s
     { onConflict: "id", ignoreDuplicates: true }
   );
   if (error) throw error;
-  revalidatePath("/now");
+  revalidatePath("/focus");
   return id;
 }
 
@@ -555,7 +495,7 @@ export async function endPause(pauseId: string) {
     .single();
   if (error) throw error;
   if (!data) throw new Error("Pause not found");
-  revalidatePath("/now");
+  revalidatePath("/focus");
 }
 
 // Stops the session and computes focused duration = total elapsed - paused time.
@@ -605,7 +545,9 @@ export async function stopFocusSession(sessionId: string) {
     await bumpStreak(supabase, user.id, "study", todayISO());
   }
 
-  revalidatePath("/now");
+  revalidatePath("/focus");
+  revalidatePath("/");
+  revalidatePath("/review");
   return focusedDurationSec;
 }
 
@@ -650,7 +592,7 @@ export async function computeAndStoreDailyScore(date: string = todayISO()) {
 
   const { data: sessions } = await supabase
     .from("focus_sessions")
-    .select("focused_duration_sec")
+    .select("id, focused_duration_sec")
     .eq("user_id", user.id)
     .gte("started_at", `${date}T00:00:00`)
     .lte("started_at", `${date}T23:59:59`);
@@ -689,7 +631,10 @@ export async function computeAndStoreDailyScore(date: string = todayISO()) {
     actualFocusMinutes:
       (sessions ?? []).reduce((s, f) => s + (f.focused_duration_sec ?? 0), 0) / 60,
     expectedCheckIns: config.expectedCheckIns,
-    actualCheckIns: (checkIns ?? []).length,
+    // Starting a Focus Session ("what am I doing?") and logging a check-in both
+    // count as tracking, so moving the quick input to Focus Sessions doesn't
+    // lower this component of the score.
+    actualCheckIns: (checkIns ?? []).length + (sessions ?? []).length,
     driftMinutes: (checkIns ?? []).filter((c) => c.drift_state === "drifting").length * 15,
     missedCommitments: taskList.filter((t) => t.status === "skipped").length,
     reschedules: taskList.filter((t) => t.status === "rescheduled").length,
@@ -826,75 +771,3 @@ async function bumpStreak(
     { onConflict: "user_id,streak_type" }
   );
 }
-
-export async function toggleTaskTop3(taskId: string, is_top3: boolean) {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) throw new Error("Not authenticated");
-
-  const { data: updated, error } = await supabase
-    .from("tasks")
-    .update({
-      is_top3,
-      priority: is_top3 ? 1 : 3,
-      updated_at: new Date().toISOString(),
-    })
-    .eq("id", taskId)
-    .eq("user_id", user.id)
-    .select("*")
-    .single();
-
-  if (error) throw error;
-
-  revalidatePath("/plan");
-  revalidatePath("/");
-  return updated;
-}
-
-export async function rolloverUnfinishedTasks(fromDate: string, toDate: string = todayISO()) {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) throw new Error("Not authenticated");
-
-  const { data: fromPlan } = await supabase
-    .from("daily_plans")
-    .select("id")
-    .eq("user_id", user.id)
-    .eq("date", fromDate)
-    .maybeSingle();
-
-  if (!fromPlan) return { count: 0 };
-
-  const { data: unfinished, error: fetchErr } = await supabase
-    .from("tasks")
-    .select("id")
-    .eq("user_id", user.id)
-    .eq("daily_plan_id", fromPlan.id)
-    .in("status", ["not_started", "in_progress", "partial"]);
-
-  if (fetchErr) throw fetchErr;
-  if (!unfinished || unfinished.length === 0) return { count: 0 };
-
-  const targetPlanId = await getOrCreateDailyPlan(toDate, user.id);
-  const taskIds = unfinished.map((t) => t.id);
-
-  const { error: updateErr } = await supabase
-    .from("tasks")
-    .update({
-      daily_plan_id: targetPlanId,
-      updated_at: new Date().toISOString(),
-    })
-    .in("id", taskIds)
-    .eq("user_id", user.id);
-
-  if (updateErr) throw updateErr;
-
-  revalidatePath("/plan");
-  revalidatePath("/");
-  return { count: taskIds.length };
-}
-
